@@ -6,7 +6,14 @@ from types import SimpleNamespace
 import pytest
 
 from thesisgraph import DEFAULT_THESIS
-from thesisgraph.agents import ResearchManager, _coerce_research_state, build_research_tools
+from thesisgraph.agents import (
+    AgentsSDKCredentialsError,
+    LiveAgentsSDKNotEnabled,
+    ResearchManager,
+    _coerce_research_state,
+    build_research_tools,
+)
+from thesisgraph.cli import main
 
 
 def test_research_manager_deterministic_path_matches_core_loop():
@@ -83,3 +90,93 @@ def test_agent_output_coercion_accepts_run_result_like_object():
     parsed = _coerce_research_state(FakeRunResult())
 
     assert parsed.thesis.text == DEFAULT_THESIS
+
+
+def test_live_sdk_requires_explicit_opt_in():
+    pytest.importorskip("agents")
+    manager = ResearchManager(model=None)
+
+    with pytest.raises(LiveAgentsSDKNotEnabled):
+        manager.run_live_sync(DEFAULT_THESIS, allow_live_sdk=False)
+
+
+def test_live_sdk_requires_api_key_when_opted_in(monkeypatch):
+    pytest.importorskip("agents")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    manager = ResearchManager(model=None)
+
+    with pytest.raises(AgentsSDKCredentialsError):
+        manager.run_live_sync(DEFAULT_THESIS, allow_live_sdk=True)
+
+
+def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
+    pytest.importorskip("agents")
+    from thesisgraph import agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+    captured = {}
+
+    async def fake_run(agent, prompt, **kwargs):
+        captured["agent_name"] = agent.name
+        captured["prompt"] = prompt
+        captured["max_turns"] = kwargs["max_turns"]
+        return SimpleNamespace(final_output=expected.model_dump())
+
+    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+
+    state = ResearchManager(model="test-model", max_turns=4).run_live_sync(
+        DEFAULT_THESIS,
+        observability_mode="off",
+        allow_live_sdk=True,
+    )
+
+    assert state.thesis.text == DEFAULT_THESIS
+    assert state.agent_run is not None
+    assert state.agent_run.mode == "live_sdk"
+    assert state.agent_run.model == "test-model"
+    assert state.agent_run.final_output_validated is True
+    assert state.agent_run.steps[0].tool_name == "Runner.run"
+    assert captured["agent_name"] == "ResearchManager"
+    assert captured["max_turns"] == 4
+    assert "Do not perform live web search" in captured["prompt"]
+
+
+def test_cli_live_sdk_requires_explicit_allow_flag(capsys):
+    pytest.importorskip("agents")
+
+    exit_code = main(["run-live-sdk", "--thesis", DEFAULT_THESIS])
+
+    assert exit_code == 2
+    assert "explicit opt-in" in capsys.readouterr().err
+
+
+def test_cli_live_sdk_writes_schema_valid_output(monkeypatch, tmp_path):
+    pytest.importorskip("agents")
+    from thesisgraph import agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+
+    async def fake_run(agent, prompt, **kwargs):
+        del agent, prompt, kwargs
+        return SimpleNamespace(final_output=expected.model_dump())
+
+    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    output_path = tmp_path / "live_state.json"
+
+    exit_code = main(
+        [
+            "run-live-sdk",
+            "--allow-live-sdk",
+            "--observability",
+            "off",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert payload["agent_run"]["mode"] == "live_sdk"
+    assert payload["agent_run"]["final_output_validated"] is True

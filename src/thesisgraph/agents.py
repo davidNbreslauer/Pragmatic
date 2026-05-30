@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,6 +46,14 @@ except ImportError:  # pragma: no cover - exercised only when the SDK is absent.
 
 class AgentsSDKUnavailable(RuntimeError):
     """Raised when live OpenAI Agents SDK objects are requested without the SDK."""
+
+
+class LiveAgentsSDKNotEnabled(RuntimeError):
+    """Raised when a live SDK run is requested without explicit opt-in."""
+
+
+class AgentsSDKCredentialsError(RuntimeError):
+    """Raised when live SDK execution is requested without API credentials."""
 
 
 class AgentOutputValidationError(RuntimeError):
@@ -156,13 +165,55 @@ class ResearchManager:
             output_type=ResearchState,
         )
 
-    async def run_live(self, thesis_text: str = DEFAULT_THESIS) -> Any:
+    def run_live_sync(
+        self,
+        thesis_text: str = DEFAULT_THESIS,
+        *,
+        max_iterations: int = 1,
+        corpus_path: str | Path | None = None,
+        execution_backend: ExecutionBackend | None = None,
+        extraction_mode: ExtractionMode = "local",
+        observability_mode: ObservabilityMode = "off",
+        allow_live_sdk: bool = False,
+    ) -> ResearchState:
+        return _run_awaitable(
+            self.run_live(
+                thesis_text,
+                max_iterations=max_iterations,
+                corpus_path=corpus_path,
+                execution_backend=execution_backend,
+                extraction_mode=extraction_mode,
+                observability_mode=observability_mode,
+                allow_live_sdk=allow_live_sdk,
+            )
+        )
+
+    async def run_live(
+        self,
+        thesis_text: str = DEFAULT_THESIS,
+        *,
+        max_iterations: int = 1,
+        corpus_path: str | Path | None = None,
+        execution_backend: ExecutionBackend | None = None,
+        extraction_mode: ExtractionMode = "local",
+        observability_mode: ObservabilityMode = "off",
+        allow_live_sdk: bool = False,
+    ) -> ResearchState:
+        _require_live_sdk_enabled(allow_live_sdk)
         _require_agents_sdk()
         agent = self.build_agent()
+        execution_backend_value = execution_backend or ""
+        corpus_path_value = str(corpus_path) if corpus_path else ""
         prompt = (
             "Run the ThesisGraph research loop for this thesis. Use the available "
-            "research-loop tool with local execution unless the user explicitly requested "
-            "Modal. Return the final schema-valid ResearchState object.\n\n"
+            "run_deterministic_research_loop_tool exactly once with these arguments. "
+            "Do not perform live web search or add sources outside the prepared corpus. "
+            "Return the final schema-valid ResearchState object.\n\n"
+            f"max_iterations: {max_iterations}\n"
+            f"corpus_path: {corpus_path_value}\n"
+            f"execution_backend: {execution_backend_value}\n"
+            f"extraction_mode: {extraction_mode}\n"
+            f"observability_mode: {observability_mode}\n\n"
             f"Thesis: {thesis_text}"
         )
         result = await Runner.run(agent, prompt, max_turns=self.max_turns)
@@ -173,6 +224,14 @@ class ResearchManager:
             agent_name=agent.name,
             model=self.model,
             tool_names=sorted(tool.name for tool in agent.tools),
+            steps=[
+                AgentRunStep(
+                    id="agent_step_001",
+                    tool_name="Runner.run",
+                    status="succeeded",
+                    summary="Live OpenAI Agents SDK runner returned a valid ResearchState.",
+                )
+            ],
             final_output_validated=True,
             message="Live OpenAI Agents SDK run returned a schema-validated ResearchState.",
         )
@@ -204,6 +263,17 @@ def _require_agents_sdk() -> None:
     if Agent is None or Runner is None or function_tool is None:
         raise AgentsSDKUnavailable(
             "Install the OpenAI Agents SDK with `pip install openai-agents` to use live orchestration."
+        )
+
+
+def _require_live_sdk_enabled(allow_live_sdk: bool) -> None:
+    if not allow_live_sdk:
+        raise LiveAgentsSDKNotEnabled(
+            "Live OpenAI Agents SDK execution requires explicit opt-in with allow_live_sdk=True."
+        )
+    if not os.getenv("OPENAI_API_KEY"):
+        raise AgentsSDKCredentialsError(
+            "Live OpenAI Agents SDK execution requires OPENAI_API_KEY."
         )
 
 

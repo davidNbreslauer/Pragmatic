@@ -95,6 +95,14 @@ PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_
 
 Prepared-corpus ingestion now carries structured source metadata and deterministic retrieval scoring. `Source` records include published year, tags, and evidence scope, while `RetrievalScore` records capture source/question matches, matched terms, scores, and rationales. The research loop ranks prepared sources by score, records the score matrix in `ResearchState`, and the Streamlit app shows a `Retrieval Scores` table.
 
+## Milestone 18
+
+Live OpenAI Agents SDK orchestration is now available as an explicit opt-in path. `ResearchManager.run_live_sync()` and `run-live-sdk` CLI execution require both `OPENAI_API_KEY` and an explicit `allow_live_sdk` confirmation, then validate the final output as `ResearchState` and record a `live_sdk` `AgentRunRecord`. The Streamlit app exposes `live_sdk` mode behind an `Enable live SDK calls` checkbox.
+
+```bash
+PYTHONPATH=src python -m thesisgraph run-live-sdk --allow-live-sdk --observability off --output .thesisgraph/live_state.json
+```
+
 Run tests:
 
 ```bash

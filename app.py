@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import streamlit as st
 
@@ -15,6 +16,7 @@ from thesisgraph import (
     run_eval_suite,
     save_eval_snapshot,
 )
+from thesisgraph.agents import AgentsSDKCredentialsError, LiveAgentsSDKNotEnabled
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
 from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
 from thesisgraph.schemas import ReplayResult, RunComparison
@@ -32,9 +34,11 @@ def main() -> None:
         max_iterations = st.slider("Iterations", min_value=1, max_value=3, value=1)
         orchestration = st.selectbox(
             "Orchestration",
-            options=["deterministic", "scripted_sdk"],
+            options=["deterministic", "scripted_sdk", "live_sdk"],
             index=0,
         )
+        live_sdk_enabled = st.checkbox("Enable live SDK calls", value=False)
+        live_sdk_model = st.text_input("Live SDK model", value="")
         execution_backend = st.selectbox("Execution", options=["local", "modal"], index=0)
         observability_mode = st.selectbox(
             "Observability",
@@ -108,23 +112,46 @@ def main() -> None:
             st.session_state.replay_result_json = replay.model_dump_json()
             st.session_state.research_state_json = replay.replay_pass.model_dump_json()
         else:
-            manager = ResearchManager()
-            if orchestration == "scripted_sdk":
-                state = manager.run_sdk_orchestrated(
-                    thesis_text,
-                    max_iterations=max_iterations,
-                    execution_backend=execution_backend,
-                    observability_mode=observability_mode,
-                )
-            else:
-                state = manager.run_deterministic(
-                    thesis_text,
-                    max_iterations=max_iterations,
-                    execution_backend=execution_backend,
-                    observability_mode=observability_mode,
-            )
-            st.session_state.research_state_json = state.model_dump_json()
-            st.session_state.pop("replay_result_json", None)
+            manager = ResearchManager(model=live_sdk_model or None)
+            try:
+                if orchestration == "live_sdk":
+                    if live_sdk_enabled and not os.getenv("OPENAI_API_KEY"):
+                        st.warning("Live SDK mode requires OPENAI_API_KEY.")
+                    with st.spinner("Running live OpenAI Agents SDK orchestration..."):
+                        state = manager.run_live_sync(
+                            thesis_text,
+                            max_iterations=max_iterations,
+                            execution_backend=execution_backend,
+                            observability_mode=observability_mode,
+                            allow_live_sdk=live_sdk_enabled,
+                        )
+                elif orchestration == "scripted_sdk":
+                    state = manager.run_sdk_orchestrated(
+                        thesis_text,
+                        max_iterations=max_iterations,
+                        execution_backend=execution_backend,
+                        observability_mode=observability_mode,
+                    )
+                else:
+                    state = manager.run_deterministic(
+                        thesis_text,
+                        max_iterations=max_iterations,
+                        execution_backend=execution_backend,
+                        observability_mode=observability_mode,
+                    )
+                st.session_state.research_state_json = state.model_dump_json()
+                st.session_state.pop("replay_result_json", None)
+            except (LiveAgentsSDKNotEnabled, AgentsSDKCredentialsError) as exc:
+                st.error(str(exc))
+                st.session_state.pop("replay_result_json", None)
+                if "research_state_json" not in st.session_state:
+                    fallback = manager.run_deterministic(
+                        thesis_text,
+                        max_iterations=max_iterations,
+                        execution_backend=execution_backend,
+                        observability_mode="off",
+                    )
+                    st.session_state.research_state_json = fallback.model_dump_json()
         st.session_state.pop("run_comparison_json", None)
         if run_clicked:
             st.session_state.pop("eval_suite_result_json", None)

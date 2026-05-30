@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Sequence
 
+from thesisgraph.agents import (
+    AgentsSDKCredentialsError,
+    LiveAgentsSDKNotEnabled,
+    ResearchManager,
+)
 from thesisgraph.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot_by_id,
@@ -31,6 +37,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--fail-on-fail",
         action="store_true",
         help="Exit non-zero when any regression gate fails.",
+    )
+
+    live_parser = subparsers.add_parser(
+        "run-live-sdk",
+        help="Run ThesisGraph through the live OpenAI Agents SDK path.",
+    )
+    live_parser.add_argument("--thesis", default=DEFAULT_THESIS)
+    live_parser.add_argument("--max-iterations", type=int, default=1)
+    live_parser.add_argument("--model")
+    live_parser.add_argument("--output")
+    live_parser.add_argument(
+        "--execution-backend",
+        choices=["local", "modal"],
+        default="local",
+    )
+    live_parser.add_argument(
+        "--observability",
+        choices=["local", "raindrop", "off"],
+        default="off",
+    )
+    live_parser.add_argument(
+        "--allow-live-sdk",
+        action="store_true",
+        help="Required confirmation that this command may make a live OpenAI API call.",
     )
 
     snapshot_parser = subparsers.add_parser(
@@ -124,6 +154,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             print(payload)
         return 1 if args.fail_on_fail and result.status == "fail" else 0
+
+    if args.command == "run-live-sdk":
+        manager = ResearchManager(model=args.model)
+        try:
+            state = manager.run_live_sync(
+                args.thesis,
+                max_iterations=args.max_iterations,
+                execution_backend=args.execution_backend,
+                observability_mode=args.observability,
+                allow_live_sdk=args.allow_live_sdk,
+            )
+        except (LiveAgentsSDKNotEnabled, AgentsSDKCredentialsError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        payload = state.model_dump_json(indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        return 0
 
     if args.command == "save-eval-snapshot":
         summary = save_eval_snapshot(

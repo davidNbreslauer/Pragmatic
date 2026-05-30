@@ -38,8 +38,10 @@ from thesisgraph.schemas import (
 
 try:
     from agents import Agent, Runner, function_tool
+    from agents.agent_output import AgentOutputSchema
 except ImportError:  # pragma: no cover - exercised only when the SDK is absent.
     Agent = None  # type: ignore[assignment]
+    AgentOutputSchema = None  # type: ignore[assignment]
     Runner = None  # type: ignore[assignment]
     function_tool = None  # type: ignore[assignment]
 
@@ -162,7 +164,7 @@ class ResearchManager:
             instructions=RESEARCH_MANAGER_INSTRUCTIONS,
             model=self.model,
             tools=build_research_tools(),
-            output_type=ResearchState,
+            output_type=AgentOutputSchema(ResearchState, strict_json_schema=False),
         )
 
     def run_live_sync(
@@ -260,7 +262,7 @@ def build_research_tools() -> list[Any]:
 
 
 def _require_agents_sdk() -> None:
-    if Agent is None or Runner is None or function_tool is None:
+    if Agent is None or AgentOutputSchema is None or Runner is None or function_tool is None:
         raise AgentsSDKUnavailable(
             "Install the OpenAI Agents SDK with `pip install openai-agents` to use live orchestration."
         )

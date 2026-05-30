@@ -41,6 +41,8 @@ ObservabilityStatus = Literal["recorded", "skipped", "failed"]
 ExecutionBackend = Literal["local", "modal"]
 AgentOrchestrationMode = Literal["deterministic", "scripted_sdk", "live_sdk"]
 AgentRunStatus = Literal["succeeded", "failed", "skipped"]
+LiveRunMode = Literal["dry_run", "live"]
+LiveRunStatus = Literal["ready", "succeeded", "blocked", "failed", "timed_out"]
 ResearchTaskType = Literal[
     "retrieve_source",
     "parse_source",
@@ -320,6 +322,37 @@ class ResearchState(BaseModel):
     eval_workshop: EvalWorkshopRecord | None = None
     agent_run: AgentRunRecord | None = None
     iteration: int = 0
+
+
+class LiveRunGuardrails(BaseModel):
+    mode: LiveRunMode = "dry_run"
+    allow_live_sdk: bool = False
+    prepared_corpus_only: bool = True
+    allow_live_web_search: bool = False
+    max_turns: int = Field(default=4, ge=1, le=20)
+    timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
+    max_iterations: int = Field(default=1, ge=1, le=5)
+    execution_backend: ExecutionBackend = "local"
+    observability_backend: ObservabilityBackend = "local"
+
+
+class LiveRunResult(BaseModel):
+    id: str
+    created_at: str
+    completed_at: str | None = None
+    elapsed_seconds: float | None = Field(default=None, ge=0.0)
+    mode: LiveRunMode
+    status: LiveRunStatus
+    thesis_text: str
+    model: str | None = None
+    guardrails: LiveRunGuardrails
+    credentials_available: bool
+    state: ResearchState | None = None
+    output_path: str | None = None
+    trace_path: str | None = None
+    trace_id: str | None = None
+    message: str
+    error_type: str | None = None
 
 
 class ReplayComparison(BaseModel):

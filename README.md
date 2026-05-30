@@ -103,6 +103,15 @@ Live OpenAI Agents SDK orchestration is now available as an explicit opt-in path
 PYTHONPATH=src python -m thesisgraph run-live-sdk --allow-live-sdk --observability off --output .thesisgraph/live_state.json
 ```
 
+## Milestone 19
+
+Live SDK execution now has a guardrailed harness. `live-run-harness` defaults to dry run, records whether credentials are available without exposing them, enforces prepared-corpus-only/no-web-search policy, caps max turns and timeout, and writes a replayable JSON artifact under `.thesisgraph/live_runs`. The Streamlit `live_sdk` mode now shows the same harness status before any real API call.
+
+```bash
+PYTHONPATH=src python -m thesisgraph live-run-harness
+PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --max-turns 4 --timeout-seconds 60 --observability local
+```
+
 Run tests:
 
 ```bash

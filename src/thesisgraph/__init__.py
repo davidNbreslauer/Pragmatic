@@ -18,12 +18,14 @@ from thesisgraph.eval_suite import (
     export_generated_eval_cases,
     run_eval_suite,
 )
+from thesisgraph.live_harness import run_live_harness, run_live_harness_sync
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
 from thesisgraph.replay import run_replay_demo
 from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
 from thesisgraph.schemas import (
     EvalSnapshotComparison,
     EvalSnapshotSummary,
+    LiveRunResult,
     RegressionEvalSuiteResult,
     ReplayResult,
     ResearchState,
@@ -35,6 +37,7 @@ __all__ = [
     "DEFAULT_THESIS",
     "EvalSnapshotComparison",
     "EvalSnapshotSummary",
+    "LiveRunResult",
     "RegressionEvalSuiteResult",
     "ReplayResult",
     "ResearchManager",
@@ -54,6 +57,8 @@ __all__ = [
     "load_eval_baseline",
     "load_eval_snapshot",
     "load_run",
+    "run_live_harness",
+    "run_live_harness_sync",
     "run_eval_suite",
     "run_replay_demo",
     "run_research_loop",

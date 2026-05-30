@@ -8,15 +8,16 @@ import streamlit as st
 from thesisgraph import (
     DEFAULT_THESIS,
     EvalSnapshotComparison,
+    LiveRunResult,
     RegressionEvalSuiteResult,
     ResearchManager,
     ResearchState,
     compare_eval_snapshot_by_id,
     list_eval_snapshots,
+    run_live_harness_sync,
     run_eval_suite,
     save_eval_snapshot,
 )
-from thesisgraph.agents import AgentsSDKCredentialsError, LiveAgentsSDKNotEnabled
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
 from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
 from thesisgraph.schemas import ReplayResult, RunComparison
@@ -39,6 +40,15 @@ def main() -> None:
         )
         live_sdk_enabled = st.checkbox("Enable live SDK calls", value=False)
         live_sdk_model = st.text_input("Live SDK model", value="")
+        live_sdk_dry_run = st.checkbox("Dry-run live SDK", value=True)
+        live_sdk_max_turns = st.slider("Live max turns", min_value=1, max_value=10, value=4)
+        live_sdk_timeout = st.number_input(
+            "Live timeout seconds",
+            min_value=5,
+            max_value=300,
+            value=60,
+            step=5,
+        )
         execution_backend = st.selectbox("Execution", options=["local", "modal"], index=0)
         observability_mode = st.selectbox(
             "Observability",
@@ -111,47 +121,56 @@ def main() -> None:
             )
             st.session_state.replay_result_json = replay.model_dump_json()
             st.session_state.research_state_json = replay.replay_pass.model_dump_json()
+            st.session_state.pop("live_run_result_json", None)
         else:
             manager = ResearchManager(model=live_sdk_model or None)
-            try:
-                if orchestration == "live_sdk":
-                    if live_sdk_enabled and not os.getenv("OPENAI_API_KEY"):
-                        st.warning("Live SDK mode requires OPENAI_API_KEY.")
-                    with st.spinner("Running live OpenAI Agents SDK orchestration..."):
-                        state = manager.run_live_sync(
-                            thesis_text,
-                            max_iterations=max_iterations,
-                            execution_backend=execution_backend,
-                            observability_mode=observability_mode,
-                            allow_live_sdk=live_sdk_enabled,
-                        )
-                elif orchestration == "scripted_sdk":
-                    state = manager.run_sdk_orchestrated(
+            if orchestration == "live_sdk":
+                if live_sdk_enabled and not os.getenv("OPENAI_API_KEY"):
+                    st.warning("Live SDK mode requires OPENAI_API_KEY.")
+                mode = "dry_run" if live_sdk_dry_run else "live"
+                with st.spinner("Checking live OpenAI Agents SDK harness..."):
+                    live_result = run_live_harness_sync(
                         thesis_text,
+                        model=live_sdk_model or None,
+                        mode=mode,
+                        allow_live_sdk=live_sdk_enabled,
+                        max_turns=live_sdk_max_turns,
+                        timeout_seconds=float(live_sdk_timeout),
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
                         observability_mode=observability_mode,
                     )
+                st.session_state.live_run_result_json = live_result.model_dump_json()
+                if live_result.state is not None:
+                    state = live_result.state
                 else:
+                    if live_result.status in {"blocked", "failed", "timed_out"}:
+                        st.error(live_result.message)
                     state = manager.run_deterministic(
-                        thesis_text,
-                        max_iterations=max_iterations,
-                        execution_backend=execution_backend,
-                        observability_mode=observability_mode,
-                    )
-                st.session_state.research_state_json = state.model_dump_json()
-                st.session_state.pop("replay_result_json", None)
-            except (LiveAgentsSDKNotEnabled, AgentsSDKCredentialsError) as exc:
-                st.error(str(exc))
-                st.session_state.pop("replay_result_json", None)
-                if "research_state_json" not in st.session_state:
-                    fallback = manager.run_deterministic(
                         thesis_text,
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
                         observability_mode="off",
                     )
-                    st.session_state.research_state_json = fallback.model_dump_json()
+            elif orchestration == "scripted_sdk":
+                state = manager.run_sdk_orchestrated(
+                    thesis_text,
+                    max_iterations=max_iterations,
+                    execution_backend=execution_backend,
+                    observability_mode=observability_mode,
+                )
+                st.session_state.pop("replay_result_json", None)
+                st.session_state.pop("live_run_result_json", None)
+            else:
+                state = manager.run_deterministic(
+                    thesis_text,
+                    max_iterations=max_iterations,
+                    execution_backend=execution_backend,
+                    observability_mode=observability_mode,
+                )
+                st.session_state.pop("replay_result_json", None)
+                st.session_state.pop("live_run_result_json", None)
+            st.session_state.research_state_json = state.model_dump_json()
         st.session_state.pop("run_comparison_json", None)
         if run_clicked:
             st.session_state.pop("eval_suite_result_json", None)
@@ -224,6 +243,9 @@ def main() -> None:
     if "replay_result_json" in st.session_state:
         replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
         render_replay(replay)
+    if "live_run_result_json" in st.session_state:
+        live_result = LiveRunResult.model_validate_json(st.session_state.live_run_result_json)
+        render_live_harness(live_result)
     render_agent_run(state)
     render_eval_workshop(state)
     render_assumptions(state)
@@ -428,6 +450,32 @@ def render_replay(replay: ReplayResult) -> None:
 
     st.dataframe(
         _benchmark_replay_rows(replay),
+        width="stretch",
+        hide_index=True,
+    )
+
+
+def render_live_harness(result: LiveRunResult) -> None:
+    st.subheader("Live Run Harness")
+    st.caption(result.message)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Mode", result.mode)
+    col2.metric("Status", result.status)
+    col3.metric("Max turns", result.guardrails.max_turns)
+    col4.metric("Timeout", f"{result.guardrails.timeout_seconds:g}s")
+
+    st.dataframe(
+        [
+            {
+                "Prepared corpus only": result.guardrails.prepared_corpus_only,
+                "Live web search": result.guardrails.allow_live_web_search,
+                "Execution": result.guardrails.execution_backend,
+                "Observability": result.guardrails.observability_backend,
+                "Credentials": "available" if result.credentials_available else "missing",
+                "Artifact": result.output_path or "",
+                "Trace": result.trace_path or result.trace_id or "",
+            }
+        ],
         width="stretch",
         hide_index=True,
     )

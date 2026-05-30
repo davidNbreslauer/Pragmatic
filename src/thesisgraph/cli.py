@@ -19,6 +19,7 @@ from thesisgraph.eval_corpus import (
     write_eval_baseline,
 )
 from thesisgraph.eval_suite import export_generated_eval_cases, run_eval_suite
+from thesisgraph.live_harness import run_live_harness_sync
 from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
 
 
@@ -61,6 +62,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--allow-live-sdk",
         action="store_true",
         help="Required confirmation that this command may make a live OpenAI API call.",
+    )
+
+    harness_parser = subparsers.add_parser(
+        "live-run-harness",
+        help="Validate or run the live OpenAI Agents SDK path with guardrails.",
+    )
+    harness_parser.add_argument("--thesis", default=DEFAULT_THESIS)
+    harness_parser.add_argument("--max-iterations", type=int, default=1)
+    harness_parser.add_argument("--model")
+    harness_parser.add_argument("--output")
+    harness_parser.add_argument("--output-dir")
+    harness_parser.add_argument("--max-turns", type=int, default=4)
+    harness_parser.add_argument("--timeout-seconds", type=float, default=60.0)
+    harness_parser.add_argument(
+        "--execution-backend",
+        choices=["local", "modal"],
+        default="local",
+    )
+    harness_parser.add_argument(
+        "--observability",
+        choices=["local", "raindrop", "off"],
+        default="local",
+    )
+    harness_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Actually make a live OpenAI Agents SDK call. Default is dry run.",
+    )
+    harness_parser.add_argument(
+        "--allow-live-sdk",
+        action="store_true",
+        help="Required confirmation when --live is used.",
+    )
+    harness_parser.add_argument(
+        "--no-artifact",
+        action="store_true",
+        help="Do not write the harness result under .thesisgraph/live_runs.",
     )
 
     snapshot_parser = subparsers.add_parser(
@@ -175,6 +213,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_path.write_text(payload, encoding="utf-8")
         else:
             print(payload)
+        return 0
+
+    if args.command == "live-run-harness":
+        result = run_live_harness_sync(
+            args.thesis,
+            model=args.model,
+            mode="live" if args.live else "dry_run",
+            allow_live_sdk=args.allow_live_sdk,
+            max_turns=args.max_turns,
+            timeout_seconds=args.timeout_seconds,
+            max_iterations=args.max_iterations,
+            execution_backend=args.execution_backend,
+            observability_mode=args.observability,
+            output_dir=args.output_dir,
+            write_artifact=not args.no_artifact,
+        )
+        payload = result.model_dump_json(indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        if result.status in {"blocked", "failed", "timed_out"}:
+            return 2
         return 0
 
     if args.command == "save-eval-snapshot":

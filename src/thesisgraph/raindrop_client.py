@@ -71,6 +71,12 @@ def build_trace_payload(state: ResearchState, *, trace_id: str) -> dict:
             "replay_outcomes": len(eval_workshop.replay_outcomes),
         },
         "trace_events": [event.model_dump() for event in state.trace_events],
+        "agent_run": state.agent_run.model_dump() if state.agent_run is not None else None,
+        "agent_steps": (
+            [step.model_dump() for step in state.agent_run.steps]
+            if state.agent_run is not None
+            else []
+        ),
         "research_task_results": [result.model_dump() for result in state.research_task_results],
         "task_spans": [span.model_dump() for span in eval_workshop.task_spans],
         "evidence_conflicts": [conflict.model_dump() for conflict in state.evidence_conflicts],
@@ -116,6 +122,9 @@ def build_workshop_payload(state: ResearchState, *, trace_id: str) -> dict:
             "failure_eval_links": len(eval_workshop.failure_eval_links),
         },
         "workshop": eval_workshop.model_dump(),
+        "connection_rows": [row.model_dump() for row in eval_workshop.connection_rows],
+        "specialist_step_artifacts": _specialist_step_artifacts(state),
+        "task_artifacts": _task_artifacts(eval_workshop),
         "failure_artifacts": failure_artifacts,
         "eval_artifacts": eval_artifacts,
         "replay_artifacts": replay_artifacts,
@@ -335,6 +344,30 @@ def _failure_artifacts(state: ResearchState) -> list[dict]:
     ]
 
 
+def _specialist_step_artifacts(state: ResearchState) -> list[dict]:
+    if state.agent_run is None:
+        return []
+    return [
+        {
+            "artifact_id": step.id,
+            "artifact_type": "specialist_step",
+            **step.model_dump(),
+        }
+        for step in state.agent_run.steps
+    ]
+
+
+def _task_artifacts(eval_workshop) -> list[dict]:
+    return [
+        {
+            "artifact_id": span.id,
+            "artifact_type": "task_span",
+            **span.model_dump(),
+        }
+        for span in eval_workshop.task_spans
+    ]
+
+
 def _eval_artifacts(state: ResearchState) -> list[dict]:
     eval_workshop = state.eval_workshop or build_eval_workshop(state)
     source_ids_by_eval = {
@@ -361,12 +394,33 @@ def _eval_artifacts(state: ResearchState) -> list[dict]:
 def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
     return [
         {
+            "event": "thesisgraph.agent_step",
+            "artifact_id": step.id,
+            "source_id": step.tool_name,
+            "status": step.status,
+            "agent_name": step.agent_name,
+        }
+        for step in (state.agent_run.steps if state.agent_run else [])
+    ] + [
+        {
             "event": "thesisgraph.task_span",
             "artifact_id": span.id,
             "source_id": span.task_id,
             "status": span.status,
+            "backend": span.backend,
+            "worker_status": span.worker_status,
+            "duration_ms": span.duration_ms,
         }
         for span in eval_workshop.task_spans
+    ] + [
+        {
+            "event": "thesisgraph.failure_artifact",
+            "artifact_id": artifact["artifact_id"],
+            "source_id": None,
+            "status": "recorded",
+            "artifact_type": artifact["artifact_type"],
+        }
+        for artifact in _failure_artifacts(state)
     ] + [
         {
             "event": "thesisgraph.failure_to_eval",
@@ -384,6 +438,15 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
             "status": "recorded",
         }
         for generated_eval in state.generated_evals
+    ] + [
+        {
+            "event": "thesisgraph.replay_outcome",
+            "artifact_id": outcome.id,
+            "source_id": outcome.generated_eval_id,
+            "status": "passed" if outcome.passed else "failed",
+            "assumption_id": outcome.assumption_id,
+        }
+        for outcome in eval_workshop.replay_outcomes
     ]
 
 

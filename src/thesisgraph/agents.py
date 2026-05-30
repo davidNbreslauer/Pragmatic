@@ -17,6 +17,7 @@ from thesisgraph.eval_workshop import build_eval_workshop
 from thesisgraph.execution import (
     build_cross_check_task,
     build_source_extraction_tasks,
+    build_source_parse_tasks,
     execute_research_tasks,
 )
 from thesisgraph.extractors import ExtractionMode, extract_evidence
@@ -365,6 +366,16 @@ class ResearchManager:
             for generated_eval in json.loads(evals_json)
         ]
 
+        state.agent_run = AgentRunRecord(
+            mode="scripted_sdk",
+            status="succeeded",
+            agent_name=agent.name,
+            model=self.model,
+            tool_names=sorted(tools),
+            steps=list(step_records),
+            final_output_validated=False,
+            message="Offline SDK-scripted orchestration is building workshop artifacts.",
+        )
         workshop_json = _invoke_specialist_tool(
             tools,
             step_records,
@@ -374,6 +385,7 @@ class ResearchManager:
             summary="Built the failure-to-eval workshop links and task spans.",
         )
         state.eval_workshop = EvalWorkshopRecord.model_validate_json(workshop_json)
+        state.agent_run = state.agent_run.model_copy(update={"steps": list(step_records)})
 
         observability_json = _invoke_specialist_tool(
             tools,
@@ -397,6 +409,7 @@ class ResearchManager:
             final_output_validated=True,
             message="Offline SDK-scripted orchestration ran specialist agents/tools instead of the canonical loop tool.",
         )
+        state.eval_workshop = build_eval_workshop(state)
         _append_agent_trace(
             state,
             "OpenAI Agents SDK specialist orchestration validated the final ResearchState.",
@@ -613,11 +626,42 @@ if function_tool is not None:
             ResearchQuestion.model_validate(question)
             for question in json.loads(research_questions_json)
         ]
-        tasks = build_source_extraction_tasks(sources, assumptions, questions)
-        result = execute_research_tasks(
-            tasks,
+        parse_tasks = build_source_parse_tasks(sources, questions)
+        parse_result = execute_research_tasks(
+            parse_tasks,
             backend=_validate_execution_backend(execution_backend),
             fallback_to_local=fallback_to_local,
+        )
+        parsed_sources = [
+            source
+            for task_result in parse_result.results
+            if task_result.status == "succeeded"
+            for source in task_result.sources
+        ] or sources
+        extraction_tasks = build_source_extraction_tasks(parsed_sources, assumptions, questions)
+        extraction_result = execute_research_tasks(
+            extraction_tasks,
+            backend=_validate_execution_backend(execution_backend),
+            fallback_to_local=fallback_to_local,
+        )
+        fallback_reasons = [
+            reason
+            for reason in [parse_result.fallback_reason, extraction_result.fallback_reason]
+            if reason
+        ]
+        combined_results = [*parse_result.results, *extraction_result.results]
+        result = ResearchBatchResult(
+            backend=extraction_result.backend,
+            attempted_backend=extraction_result.attempted_backend,
+            results=combined_results,
+            fallback_reason="; ".join(fallback_reasons) or None,
+            metadata={
+                "task_count": str(len(combined_results)),
+                "parse_task_count": str(len(parse_tasks)),
+                "extract_task_count": str(len(extraction_tasks)),
+                "source_count": str(len(parsed_sources)),
+                "backend_sequence": f"{parse_result.backend}->{extraction_result.backend}",
+            },
         )
         return result.model_dump_json()
 

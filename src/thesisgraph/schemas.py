@@ -175,6 +175,7 @@ class DecisiveTest(BaseModel):
 
 class GeneratedEval(BaseModel):
     id: str
+    source_failure_id: str | None = None
     failure_observed: str
     root_cause: str
     eval_rule: str
@@ -282,6 +283,11 @@ class EvalWorkshopTaskSpan(BaseModel):
     task_type: ResearchTaskType
     backend: ExecutionBackend
     status: ResearchTaskStatus
+    agent_step_id: str | None = None
+    agent_name: str | None = None
+    tool_name: str | None = None
+    worker_status: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
     source_ids: list[str] = Field(default_factory=list)
     evidence_item_count: int = Field(ge=0)
     evidence_conflict_count: int = Field(ge=0)
@@ -310,10 +316,25 @@ class ReplayOutcomeRecord(BaseModel):
     summary: str
 
 
+class EvalWorkshopConnectionRow(BaseModel):
+    id: str
+    specialist: str | None = None
+    tool: str | None = None
+    task_id: str | None = None
+    backend: ExecutionBackend | None = None
+    worker_status: str | None = None
+    failure_id: str | None = None
+    eval_id: str | None = None
+    replay_id: str | None = None
+    status: str
+    summary: str
+
+
 class EvalWorkshopRecord(BaseModel):
     task_spans: list[EvalWorkshopTaskSpan] = Field(default_factory=list)
     failure_eval_links: list[EvalWorkshopLink] = Field(default_factory=list)
     replay_outcomes: list[ReplayOutcomeRecord] = Field(default_factory=list)
+    connection_rows: list[EvalWorkshopConnectionRow] = Field(default_factory=list)
     summary: str
 
 

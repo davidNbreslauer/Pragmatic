@@ -9,6 +9,7 @@ def generate_evals_from_failures(invalid_leaps: list[InvalidLeap]) -> list[Gener
         evals.append(
             GeneratedEval(
                 id=f"eval_{index:03d}",
+                source_failure_id=leap.id,
                 failure_observed=f"The system risked accepting this inference: {leap.leap}",
                 root_cause=leap.why_invalid,
                 eval_rule=_eval_rule_for_leap(leap),
@@ -41,4 +42,3 @@ def _eval_rule_for_leap(leap: InvalidLeap) -> str:
             "If evidence is a company claim, classify it as anecdotal until independent validation is present."
         )
     return "Classify the evidence by what it directly measures, not by the stronger thesis it suggests."
-

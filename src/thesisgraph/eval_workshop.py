@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from thesisgraph.schemas import (
+    AgentRunStep,
     EvalWorkshopLink,
+    EvalWorkshopConnectionRow,
     EvalWorkshopRecord,
     EvalWorkshopTaskSpan,
     GeneratedEval,
@@ -27,20 +29,28 @@ def build_eval_workshop(
         replay_comparisons=replay_comparisons or [],
         applied_eval_rules=applied_eval_rules or [],
     )
+    failure_eval_links.extend(_replay_eval_to_outcome_links(replay_outcomes))
+    connection_rows = build_connection_rows(
+        task_spans=task_spans,
+        failure_eval_links=failure_eval_links,
+        replay_outcomes=replay_outcomes,
+    )
 
     summary = (
         f"Captured {len(task_spans)} task spans, {len(failure_eval_links)} failure links, "
-        f"and {len(replay_outcomes)} replay outcomes."
+        f"{len(replay_outcomes)} replay outcomes, and {len(connection_rows)} connection rows."
     )
     return EvalWorkshopRecord(
         task_spans=task_spans,
         failure_eval_links=failure_eval_links,
         replay_outcomes=replay_outcomes,
+        connection_rows=connection_rows,
         summary=summary,
     )
 
 
 def build_task_spans(state: ResearchState) -> list[EvalWorkshopTaskSpan]:
+    step_by_task_type = _agent_step_by_task_type(state.agent_run.steps if state.agent_run else [])
     return [
         EvalWorkshopTaskSpan(
             id=f"span_{index:03d}",
@@ -48,6 +58,23 @@ def build_task_spans(state: ResearchState) -> list[EvalWorkshopTaskSpan]:
             task_type=result.task_type,
             backend=result.backend,
             status=result.status,
+            agent_step_id=(
+                step_by_task_type[result.task_type].id
+                if result.task_type in step_by_task_type
+                else None
+            ),
+            agent_name=(
+                step_by_task_type[result.task_type].agent_name
+                if result.task_type in step_by_task_type
+                else None
+            ),
+            tool_name=(
+                step_by_task_type[result.task_type].tool_name
+                if result.task_type in step_by_task_type
+                else None
+            ),
+            worker_status=result.metadata.get("worker_status"),
+            duration_ms=_duration_ms(result.metadata.get("duration_ms")),
             source_ids=result.source_ids,
             evidence_item_count=len(result.evidence_items),
             evidence_conflict_count=len(result.evidence_conflicts),
@@ -64,6 +91,57 @@ def build_failure_eval_links(state: ResearchState) -> list[EvalWorkshopLink]:
     links.extend(_conflict_to_invalid_leap_links(state))
     links.extend(_verifier_failure_to_eval_links(state))
     return links
+
+
+def build_connection_rows(
+    *,
+    task_spans: list[EvalWorkshopTaskSpan],
+    failure_eval_links: list[EvalWorkshopLink],
+    replay_outcomes: list[ReplayOutcomeRecord],
+) -> list[EvalWorkshopConnectionRow]:
+    rows: list[EvalWorkshopConnectionRow] = []
+    for index, span in enumerate(task_spans, start=1):
+        rows.append(
+            EvalWorkshopConnectionRow(
+                id=f"connection_task_{index:03d}",
+                specialist=span.agent_name,
+                tool=span.tool_name,
+                task_id=span.task_id,
+                backend=span.backend,
+                worker_status=span.worker_status,
+                status=span.status,
+                summary=(
+                    f"{span.task_type} ran via {span.backend} for "
+                    f"{len(span.source_ids)} source(s)."
+                ),
+            )
+        )
+    for index, link in enumerate(failure_eval_links, start=1):
+        rows.append(
+            EvalWorkshopConnectionRow(
+                id=f"connection_link_{index:03d}",
+                failure_id=link.source_id,
+                eval_id=link.target_id if link.target_id.startswith("eval_") else None,
+                replay_id=(
+                    link.target_id
+                    if link.link_type == "replay_eval_to_outcome"
+                    else None
+                ),
+                status=link.link_type,
+                summary=link.summary,
+            )
+        )
+    for index, outcome in enumerate(replay_outcomes, start=1):
+        rows.append(
+            EvalWorkshopConnectionRow(
+                id=f"connection_replay_{index:03d}",
+                eval_id=outcome.generated_eval_id,
+                replay_id=outcome.id,
+                status="passed" if outcome.passed else "failed",
+                summary=outcome.summary,
+            )
+        )
+    return rows
 
 
 def build_replay_outcomes(
@@ -110,10 +188,17 @@ def _invalid_leap_to_eval_links(
     generated_evals: list[GeneratedEval],
 ) -> list[EvalWorkshopLink]:
     links: list[EvalWorkshopLink] = []
-    for index, (leap, generated_eval) in enumerate(
-        zip(invalid_leaps, generated_evals, strict=False),
-        start=1,
-    ):
+    leaps_by_id = {leap.id: leap for leap in invalid_leaps}
+    ordered_pairs = [
+        (leaps_by_id.get(generated_eval.source_failure_id), generated_eval)
+        for generated_eval in generated_evals
+        if generated_eval.source_failure_id in leaps_by_id
+    ]
+    if not ordered_pairs:
+        ordered_pairs = list(zip(invalid_leaps, generated_evals, strict=False))
+    for index, (leap, generated_eval) in enumerate(ordered_pairs, start=1):
+        if leap is None:
+            continue
         links.append(
             EvalWorkshopLink(
                 id=f"link_invalid_leap_eval_{index:03d}",
@@ -123,6 +208,27 @@ def _invalid_leap_to_eval_links(
                 summary=f"{leap.leap} produced {generated_eval.id}.",
                 affected_assumption_ids=leap.affected_assumption_ids,
                 source_ids=leap.source_ids,
+            )
+        )
+    return links
+
+
+def _replay_eval_to_outcome_links(
+    replay_outcomes: list[ReplayOutcomeRecord],
+) -> list[EvalWorkshopLink]:
+    links: list[EvalWorkshopLink] = []
+    for index, outcome in enumerate(replay_outcomes, start=1):
+        if not outcome.generated_eval_id:
+            continue
+        links.append(
+            EvalWorkshopLink(
+                id=f"link_replay_eval_outcome_{index:03d}",
+                link_type="replay_eval_to_outcome",
+                source_id=outcome.generated_eval_id,
+                target_id=outcome.id,
+                summary=f"{outcome.generated_eval_id} replay produced {outcome.id}.",
+                affected_assumption_ids=[outcome.assumption_id],
+                source_ids=[],
             )
         )
     return links
@@ -221,3 +327,27 @@ def _best_eval_for_assumptions(
         None,
     )
     return match
+
+
+def _agent_step_by_task_type(steps: list[AgentRunStep]) -> dict[str, AgentRunStep]:
+    tool_by_task_type = {
+        "parse_source": "execute_source_research_tasks_tool",
+        "extract_evidence": "execute_source_research_tasks_tool",
+        "cross_check": "cross_check_evidence_tool",
+        "verify_decisive_test": "run_decisive_test_verifiers_tool",
+    }
+    steps_by_tool = {step.tool_name: step for step in steps}
+    return {
+        task_type: steps_by_tool[tool_name]
+        for task_type, tool_name in tool_by_task_type.items()
+        if tool_name in steps_by_tool
+    }
+
+
+def _duration_ms(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return max(0, int(value))
+    except ValueError:
+        return None

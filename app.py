@@ -600,10 +600,32 @@ def render_eval_workshop(state: ResearchState) -> None:
     st.subheader("Eval Workshop")
     st.caption(workshop.summary)
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Task spans", len(workshop.task_spans))
     col2.metric("Failure links", len(workshop.failure_eval_links))
     col3.metric("Replay outcomes", len(workshop.replay_outcomes))
+    col4.metric("Connection rows", len(workshop.connection_rows))
+
+    if workshop.connection_rows:
+        st.dataframe(
+            [
+                {
+                    "Specialist": row.specialist or "",
+                    "Tool": row.tool or "",
+                    "Task": row.task_id or "",
+                    "Backend": row.backend or "",
+                    "Worker": row.worker_status or "",
+                    "Failure": row.failure_id or "",
+                    "Eval": row.eval_id or "",
+                    "Replay": row.replay_id or "",
+                    "Status": row.status,
+                    "Summary": row.summary,
+                }
+                for row in workshop.connection_rows
+            ],
+            width="stretch",
+            hide_index=True,
+        )
 
     if workshop.failure_eval_links:
         st.dataframe(
@@ -649,6 +671,10 @@ def render_eval_workshop(state: ResearchState) -> None:
                     "Type": span.task_type,
                     "Backend": span.backend,
                     "Status": span.status,
+                    "Specialist": span.agent_name or "",
+                    "Tool": span.tool_name or "",
+                    "Worker": span.worker_status or "",
+                    "Duration ms": span.duration_ms,
                     "Sources": ", ".join(span.source_ids),
                     "Evidence": span.evidence_item_count,
                     "Conflicts": span.evidence_conflict_count,

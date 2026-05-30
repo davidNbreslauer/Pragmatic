@@ -48,6 +48,8 @@ def test_replay_demo_records_workshop_replay_outcomes():
     assert replay.eval_workshop is not None
     assert replay.replay_pass.eval_workshop is not None
     assert replay.eval_workshop.replay_outcomes
+    assert replay.eval_workshop.connection_rows
+    assert any(link.link_type == "replay_eval_to_outcome" for link in replay.eval_workshop.failure_eval_links)
     assert all(outcome.passed for outcome in replay.eval_workshop.replay_outcomes)
     assert replay.replay_pass.observability is not None
     assert replay.replay_pass.observability.backend == "off"

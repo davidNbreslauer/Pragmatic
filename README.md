@@ -137,6 +137,10 @@ PYTHONPATH=src python -m thesisgraph doctor --run-openai-live --run-modal-remote
 
 Modal-backed execution is now visible as a broader research fan-out layer. Prepared corpus sources pass through typed `parse_source` tasks before `extract_evidence` tasks, and the same execution backend also runs cross-checking and verifier tasks. Each `ResearchTaskResult` records worker status, duration, source counts, and output counts. The Streamlit app shows a `Research Execution Tasks` table so a demo viewer can see which work ran locally or through Modal.
 
+## Milestone 25
+
+Raindrop Workshop artifacts now include a connection layer that makes the demo trace readable: specialist SDK steps, Modal/local task spans, failure artifacts, generated evals, and replay outcomes are linked through stable IDs. Generated evals carry their source failure ID, task spans include agent/tool and worker metadata, the workshop bundle includes specialist/task artifacts plus connection rows, and the Streamlit Eval Workshop panel renders the chain directly.
+
 Run tests:
 
 ```bash

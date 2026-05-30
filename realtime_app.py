@@ -531,7 +531,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pragmatic</title>
+  <title>Pragmatic AI</title>
   <style>
     :root {
       --bg: #f6f7f5;
@@ -554,94 +554,123 @@ INDEX_HTML = """<!doctype html>
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    main { max-width: 1440px; margin: 0 auto; padding: 24px 18px 60px; }
-    .brand { font-size: 12px; font-weight: 800; color: #4b5563; text-transform: uppercase; }
-    h1 { margin: 14px 0 8px; font-size: clamp(34px, 5vw, 58px); line-height: 1; letter-spacing: 0; }
-    h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
-    h3 { margin: 0 0 10px; font-size: 15px; }
-    .sub { color: var(--muted); font-size: 16px; max-width: 850px; }
+    body { overflow: hidden; }
+    main {
+      height: 100vh;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 12px 18px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 10px;
+      overflow: hidden;
+    }
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      min-height: 56px;
+    }
+    .brand { font-size: 15px; font-weight: 850; color: #253041; letter-spacing: 0; }
+    .tagline { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    h2 { margin: 0; font-size: 15px; letter-spacing: 0; }
+    h3 { margin: 0 0 8px; font-size: 14px; }
     .ask, .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
     }
-    .ask { margin-top: 18px; padding: 16px; }
-    label { display: block; font-weight: 700; margin-bottom: 8px; }
+    .ask { padding: 10px; }
+    label { display: block; font-weight: 740; margin-bottom: 5px; font-size: 12px; color: #344054; }
+    .question-row { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 10px; align-items: end; }
+    .question-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
     textarea {
       width: 100%;
-      min-height: 86px;
+      height: 52px;
+      min-height: 52px;
+      max-height: 120px;
       resize: vertical;
       border: 1px solid #e1e5ea;
       border-radius: 7px;
-      padding: 13px;
+      padding: 8px 10px;
       font: inherit;
+      font-size: 13px;
       background: #f2f4f7;
       color: var(--ink);
     }
     button {
       border: 1px solid var(--line);
       border-radius: 7px;
-      padding: 11px 17px;
+      padding: 9px 12px;
       background: #fff;
       color: var(--ink);
       font-weight: 760;
       cursor: pointer;
     }
-    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); min-width: 160px; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); min-width: 92px; }
+    .answer-close { min-width: 0; padding: 5px 9px; font-size: 13px; }
     button:disabled { opacity: .55; cursor: wait; }
-    select, input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fff; font: inherit; }
-    details { margin-top: 12px; color: var(--muted); }
-    details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+    select, input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px; background: #fff; font: inherit; font-size: 12px; }
+    details { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
     .chip, .badge {
       border: 1px solid var(--line);
       border-radius: 7px;
-      padding: 8px 10px;
+      padding: 5px 7px;
       background: #fff;
       color: #344054;
-      font-size: 13px;
+      font-size: 11px;
     }
-    .phase-ribbon { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 18px 0; }
+    .phase-ribbon { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin: 0; }
     .phase {
       border: 1px solid var(--line);
       border-radius: 7px;
       background: #fff;
       color: var(--muted);
-      padding: 10px;
-      font-size: 12px;
+      padding: 7px 8px;
+      min-height: 30px;
+      font-size: 11px;
       font-weight: 800;
       text-align: center;
       transition: background .25s ease, color .25s ease, border-color .25s ease;
     }
     .phase.active { background: #fff5f2; color: #9f3a32; border-color: #eda39d; }
     .phase.done { background: #edf7ef; color: #27673b; border-color: #a7d9b4; }
-    .cockpit { display: grid; grid-template-columns: minmax(260px, .78fr) minmax(420px, 1.25fr) minmax(280px, .82fr); gap: 14px; }
-    .pane { min-height: 640px; padding: 14px; overflow: hidden; }
-    .pane-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .cockpit {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(250px, .78fr) minmax(390px, 1.28fr) minmax(270px, .82fr);
+      gap: 10px;
+    }
+    .pane { min-height: 0; padding: 12px; overflow: hidden; display: flex; flex-direction: column; }
+    .pane-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; flex: 0 0 auto; }
     .thinking {
-      height: 564px;
+      flex: 1;
+      min-height: 0;
       overflow: auto;
       border: 1px solid #e6e9ee;
       border-radius: 8px;
       background: #101820;
       color: #d9f3ee;
       padding: 12px;
-      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font: 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       white-space: pre-wrap;
+      mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 100%);
     }
     .tool-chip {
       display: inline-block;
-      margin: 3px 5px 3px 0;
-      padding: 4px 7px;
+      margin: 2px 4px 2px 0;
+      padding: 3px 6px;
       border-radius: 6px;
       background: #22324a;
       color: #cde3ff;
-      font: 12px ui-sans-serif, system-ui, sans-serif;
+      font: 11px ui-sans-serif, system-ui, sans-serif;
     }
     .cursor { display: inline-block; width: 7px; height: 14px; background: #d9f3ee; animation: blink 1s steps(2) infinite; vertical-align: -2px; }
     @keyframes blink { 50% { opacity: 0; } }
-    .graph-wrap { position: relative; height: 590px; border: 1px solid #e1e5ea; border-radius: 8px; overflow: hidden; background: #fbfbf8; }
+    .graph-wrap { position: relative; flex: 1; min-height: 0; border: 1px solid #e1e5ea; border-radius: 8px; overflow: hidden; background: #fbfbf8; }
     #beliefGraph { width: 100%; height: 100%; display: block; }
     .link { stroke: #98a2b3; stroke-opacity: .62; stroke-width: 1.8px; }
     .link.contradicts { stroke: var(--red); stroke-dasharray: 6 4; }
@@ -665,44 +694,60 @@ INDEX_HTML = """<!doctype html>
       font-weight: 760;
     }
     .toast.visible { display: block; }
-    .workers { height: 332px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+    .workers { flex: 0 0 34%; min-height: 100px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-content: start; }
     .worker {
       border: 1px solid #dfe4eb;
       border-radius: 8px;
-      padding: 10px;
-      min-height: 70px;
+      padding: 8px;
+      min-height: 58px;
       background: #fbfcfd;
-      font-size: 12px;
+      font-size: 11px;
     }
     .worker.running { border-color: #96d4cc; background: #edf8f6; }
     .worker.done { border-color: #a8d8b5; background: #eef8f0; }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #b3d9d5; border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .counters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-    .counter { border: 1px solid #e1e5ea; border-radius: 8px; padding: 12px; background: #fbfbf9; }
-    .counter .label { font-size: 12px; color: var(--muted); }
-    .counter .value { font-size: 26px; font-weight: 820; margin-top: 2px; }
-    .event-log { height: 164px; overflow: auto; display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
-    .event { border: 1px solid #e5e7eb; border-radius: 7px; padding: 8px; background: #fbfbfb; font-size: 12px; }
-    .event strong { display: block; font-size: 12px; }
+    .counters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 8px; flex: 0 0 auto; }
+    .counter { border: 1px solid #e1e5ea; border-radius: 8px; padding: 8px; background: #fbfbf9; }
+    .counter .label { font-size: 10.5px; color: var(--muted); }
+    .counter .value { font-size: 18px; font-weight: 820; margin-top: 1px; }
+    .event-log { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .event { border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px; background: #fbfbfb; font-size: 11px; }
+    .event strong { display: block; font-size: 11px; }
     .event span { color: var(--muted); }
-    .answer { margin-top: 18px; padding: 16px; display: none; }
-    .answer.visible { display: block; }
-    .headline { font-size: 24px; line-height: 1.25; font-weight: 780; margin: 6px 0 8px; }
-    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfbf9; }
-    .metric .label { color: var(--muted); font-size: 12px; }
-    .metric .value { font-size: 22px; font-weight: 780; margin-top: 3px; }
-    .tables { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border-bottom: 1px solid #eaecf0; padding: 8px; text-align: left; vertical-align: top; }
-    th { color: var(--muted); font-size: 12px; }
+    .answer {
+      position: fixed;
+      left: max(18px, calc((100vw - 1440px) / 2 + 18px));
+      right: max(18px, calc((100vw - 1440px) / 2 + 18px));
+      bottom: 14px;
+      z-index: 20;
+      max-height: min(58vh, 520px);
+      padding: 14px;
+      display: none;
+      overflow: auto;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, .24);
+      transform: translateY(18px);
+      opacity: 0;
+      transition: transform .22s ease, opacity .22s ease;
+    }
+    .answer.visible { display: block; transform: translateY(0); opacity: 1; }
+    .answer-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .headline { font-size: 20px; line-height: 1.25; font-weight: 780; margin: 6px 0 8px; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: #fbfbf9; }
+    .metric .label { color: var(--muted); font-size: 11px; }
+    .metric .value { font-size: 18px; font-weight: 780; margin-top: 2px; }
+    .tables { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid #eaecf0; padding: 6px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; }
     @media (max-width: 1050px) {
-      .cockpit, .tables { grid-template-columns: 1fr; }
-      .pane { min-height: auto; }
-      .graph-wrap, .thinking { height: 520px; }
+      main { overflow: auto; }
+      body { overflow: auto; }
+      .topbar, .question-row, .cockpit, .tables { grid-template-columns: 1fr; }
+      .pane { min-height: 360px; }
       details .grid, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .chips { margin-left: 0; }
+      .chips, .question-actions { justify-content: flex-start; }
     }
     @media (max-width: 650px) {
       details .grid, .metrics, .phase-ribbon { grid-template-columns: 1fr; }
@@ -711,35 +756,40 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
   <main>
-    <div class="brand">Pragmatic</div>
-    <h1>Do diligence.</h1>
-    <p class="sub">Watch the live research job think, fan out, build evidence, revise confidence, and leave a trace you can inspect.</p>
-    <section class="ask">
-      <label for="question">Question</label>
-      <textarea id="question">__DEFAULT_THESIS__</textarea>
-      <div class="actions">
-        <button class="primary" id="ask">Ask Pragmatic</button>
-        <button id="stop" disabled>Stop Watching</button>
-        <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
-        <div class="chips">
-          <span class="chip">OpenAI Agents SDK</span>
-          <span class="chip">Modal fan-out</span>
-          <span class="chip">Raindrop Workshop</span>
+    <section class="topbar">
+      <section class="ask">
+        <div class="question-row">
+          <div>
+            <div class="brand">Pragmatic AI</div>
+            <div class="tagline">Do diligence: sourced evidence, confidence updates, next decisive test.</div>
+            <label for="question">Question</label>
+            <textarea id="question" rows="2">__DEFAULT_THESIS__</textarea>
+          </div>
+          <div class="question-actions">
+            <button class="primary" id="ask">Ask</button>
+            <button id="stop" disabled>Stop</button>
+            <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
+          </div>
         </div>
+        <details>
+          <summary>Run controls</summary>
+          <div class="grid">
+            <label>Orchestration<select id="orchestration"><option value="live_sdk">live_sdk</option><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option></select></label>
+            <label>Execution<select id="execution_backend"><option value="modal">modal</option><option value="local">local</option></select></label>
+            <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
+            <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
+            <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
+            <label>Max turns<input id="max_turns" type="number" value="12" min="1" max="20" /></label>
+            <label>Max web sources<input id="max_web_sources" type="number" value="8" min="1" max="20" /></label>
+            <label>Full proof<select id="require_demo_proof"><option value="true">required</option><option value="false">not required</option></select></label>
+          </div>
+        </details>
+      </section>
+      <div class="chips">
+        <span class="chip">OpenAI Agents SDK</span>
+        <span class="chip">Modal fan-out</span>
+        <span class="chip">Raindrop Workshop</span>
       </div>
-      <details>
-        <summary>Run controls</summary>
-        <div class="grid">
-          <label>Orchestration<select id="orchestration"><option value="live_sdk">live_sdk</option><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option></select></label>
-          <label>Execution<select id="execution_backend"><option value="modal">modal</option><option value="local">local</option></select></label>
-          <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
-          <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
-          <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
-          <label>Max turns<input id="max_turns" type="number" value="12" min="1" max="20" /></label>
-          <label>Max web sources<input id="max_web_sources" type="number" value="8" min="1" max="20" /></label>
-          <label>Full proof<select id="require_demo_proof"><option value="true">required</option><option value="false">not required</option></select></label>
-        </div>
-      </details>
     </section>
     <section class="phase-ribbon" id="phases">
       <div class="phase" data-phase="decompose">Decompose</div>
@@ -769,7 +819,10 @@ INDEX_HTML = """<!doctype html>
       </aside>
     </section>
     <section class="answer panel" id="answer">
-      <div class="brand">Best Current Answer</div>
+      <div class="answer-head">
+        <div class="brand">Best Current Answer</div>
+        <button class="answer-close" id="answerClose" type="button">Close</button>
+      </div>
       <div class="headline" id="headline"></div>
       <p id="answerText"></p>
       <div class="metrics" id="metrics"></div>
@@ -795,6 +848,7 @@ INDEX_HTML = """<!doctype html>
     let nodeById = new Map();
     let workerById = new Map();
     let latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
+    let thinkingLines = 0;
     const svg = document.getElementById("beliefGraph");
     const linkLayer = svgEl("g", {});
     const nodeLayer = svgEl("g", {});
@@ -812,6 +866,7 @@ INDEX_HTML = """<!doctype html>
     }
     function reset() {
       pendingText = "";
+      thinkingLines = 0;
       thinking.innerHTML = '<span class="cursor"></span>';
       log.innerHTML = "";
       workers.innerHTML = "";
@@ -845,7 +900,9 @@ INDEX_HTML = """<!doctype html>
     }
     function appendReasoning(text) {
       if (!text) return;
-      pendingText += text;
+      const display = formatReasoningChunk(text);
+      if (!display) return;
+      pendingText += display;
       document.getElementById("reasoningStatus").textContent = "streaming";
       if (!textTimer) textTimer = setInterval(releaseThinkingText, 70);
     }
@@ -855,17 +912,83 @@ INDEX_HTML = """<!doctype html>
         textTimer = null;
         return;
       }
-      const chunk = pendingText.slice(0, 4);
-      pendingText = pendingText.slice(4);
-      thinking.insertBefore(document.createTextNode(chunk), thinking.querySelector(".cursor"));
+      const chunk = pendingText.slice(0, 18);
+      pendingText = pendingText.slice(18);
+      appendThinkingNode(document.createTextNode(chunk), chunk);
       thinking.scrollTop = thinking.scrollHeight;
+    }
+    function appendThinkingNode(node, text = "") {
+      thinking.insertBefore(node, thinking.querySelector(".cursor"));
+      thinkingLines += Math.max(1, String(text).split("\\n").length - 1);
+      trimThinking();
+    }
+    function trimThinking() {
+      while (thinkingLines > 400 && thinking.firstChild && !thinking.firstChild.classList?.contains("cursor")) {
+        const first = thinking.firstChild;
+        thinkingLines -= Math.max(1, (first.textContent || "").split("\\n").length - 1);
+        first.remove();
+      }
+    }
+    function formatReasoningChunk(text) {
+      let clean = String(text)
+        .replace(/\\\\n/g, " ")
+        .replace(/\\\\r/g, " ")
+        .replace(/\\\\t/g, " ")
+        .replace(/\\\\"/g, '"')
+        .replace(/\\s+/g, " ")
+        .trim();
+      if (!clean) return "";
+      if (isJsonish(clean)) return `\\n↳ ${summarizeArgs(clean)}\\n`;
+      return clean.endsWith(".") || clean.endsWith(":") ? `${clean} ` : `${clean} `;
+    }
+    function isJsonish(text) {
+      const start = text[0];
+      const jsonMarks = (text.match(/[{}":,\\[\\]]/g) || []).length;
+      return start === "{" || start === "[" || jsonMarks / Math.max(text.length, 1) > .18;
+    }
+    function summarizeArgs(text) {
+      try {
+        const parsed = JSON.parse(text);
+        const flat = flattenArgs(parsed);
+        const parts = Object.entries(flat)
+          .filter(([, value]) => value !== undefined && value !== null && String(value).trim())
+          .slice(0, 3)
+          .map(([key, value]) => `${key}=${quoteShort(value, key.includes("query") || key.includes("text"))}`);
+        return parts.length ? `args: ${parts.join(", ")}` : "{...}";
+      } catch {
+        const id = text.match(/"?(id|task_id|source_id)"?\\s*:\\s*"?([^",}]+)/i)?.[2];
+        const query = text.match(/"?(query|text|claim)"?\\s*:\\s*"([^"]+)/i)?.[2];
+        const summary = [id ? `id=${id}` : "", query ? `query=${quoteShort(query, true)}` : ""].filter(Boolean).join(", ");
+        return summary ? `args: ${summary}` : "{...}";
+      }
+    }
+    function flattenArgs(value, prefix = "", out = {}) {
+      if (Array.isArray(value)) {
+        out[prefix || "items"] = `${value.length} items`;
+        return out;
+      }
+      if (value && typeof value === "object") {
+        Object.entries(value).forEach(([key, child]) => {
+          const next = prefix ? `${prefix}.${key}` : key;
+          if (child && typeof child === "object" && !Array.isArray(child)) flattenArgs(child, next, out);
+          else out[key] = child;
+        });
+        return out;
+      }
+      out[prefix || "value"] = value;
+      return out;
+    }
+    function quoteShort(value, quoted = false) {
+      let text = String(value).replace(/\\s+/g, " ").trim();
+      if (text.length > 80) text = `${text.slice(0, 77)}...`;
+      return quoted ? `"${text}"` : text;
     }
     function addToolChip(name) {
       const chip = document.createElement("span");
       chip.className = "tool-chip";
       chip.textContent = name;
-      thinking.insertBefore(chip, thinking.querySelector(".cursor"));
-      thinking.insertBefore(document.createTextNode(" "), thinking.querySelector(".cursor"));
+      appendThinkingNode(chip, "\\n");
+      appendThinkingNode(document.createTextNode(" "), " ");
       thinking.scrollTop = thinking.scrollHeight;
       document.getElementById("reasoningStatus").textContent = "tools active";
     }
@@ -874,6 +997,7 @@ INDEX_HTML = """<!doctype html>
       const node = {id: meta.id, kind: meta.node_kind || "unknown", label: meta.label || meta.id, confidence: Number(meta.confidence ?? .5)};
       nodeById.set(node.id, node);
       graphNodes.push(node);
+      bumpCounter(counterForNode(node.kind));
       updateGraph();
       document.getElementById("graphStatus").textContent = `${graphNodes.length} nodes`;
     }
@@ -884,6 +1008,8 @@ INDEX_HTML = """<!doctype html>
       const id = `${meta.from}->${meta.to}:${meta.relation || "relates"}`;
       if (graphLinks.some(link => link.id === id)) return;
       graphLinks.push({id, source: meta.from, target: meta.to, relation: meta.relation || "relates"});
+      if (meta.relation === "contradicts") bumpCounter("conflicts");
+      if (meta.relation === "proxy_only") bumpCounter("leaps");
       updateGraph();
     }
     function updateConfidence(meta) {
@@ -907,25 +1033,82 @@ INDEX_HTML = """<!doctype html>
       const height = box.height || 590;
       const centerX = width / 2;
       const centerY = height / 2;
-      const rings = {assumption: 165, evidence: 95, source: 235, test: 210, eval: 260, unknown: 40};
+      const rings = {assumption: Math.min(width, height) * .27, evidence: Math.min(width, height) * .16, source: Math.min(width, height) * .36, question: Math.min(width, height) * .08, test: Math.min(width, height) * .31, eval: Math.min(width, height) * .38, unknown: Math.min(width, height) * .08};
       const groups = {};
       graphNodes.forEach(node => {
         groups[node.kind] = groups[node.kind] || [];
         groups[node.kind].push(node);
       });
-      Object.entries(groups).forEach(([kind, nodes]) => {
-        const radius = rings[kind] || 120;
-        nodes.forEach((node, index) => {
-          const angle = (Math.PI * 2 * index / Math.max(nodes.length, 1)) + kindOffset(kind);
-          node.x = centerX + Math.cos(angle) * radius;
-          node.y = centerY + Math.sin(angle) * radius * .72;
-        });
-      });
+      Object.entries(groups).forEach(([kind, nodes]) => positionGroup(kind, nodes, rings[kind] || Math.min(width, height) * .2, centerX, centerY));
+      relaxGraph(width, height, centerX, centerY);
       renderLinks();
       renderNodes();
     }
+    function positionGroup(kind, nodes, radius, centerX, centerY) {
+      if (kind === "question") {
+        nodes.forEach((node, index) => {
+          const spread = (index - (nodes.length - 1) / 2) * 42;
+          node.x = centerX + spread;
+          node.y = centerY - radius;
+        });
+        return;
+      }
+      nodes.forEach((node, index) => {
+        const angle = (Math.PI * 2 * index / Math.max(nodes.length, 1)) + kindOffset(kind);
+        node.x = centerX + Math.cos(angle) * radius;
+        node.y = centerY + Math.sin(angle) * radius * .7;
+      });
+    }
+    function relaxGraph(width, height, centerX, centerY) {
+      const margin = 24;
+      for (let pass = 0; pass < 60; pass++) {
+        graphNodes.forEach(node => {
+          node.x += (centerX - node.x) * .005;
+          node.y += (centerY - node.y) * .005;
+        });
+        graphLinks.forEach(link => {
+          const a = nodeById.get(link.source);
+          const b = nodeById.get(link.target);
+          if (!a || !b) return;
+          const dx = b.x - a.x || .1;
+          const dy = b.y - a.y || .1;
+          const dist = Math.hypot(dx, dy);
+          const target = (a.kind === "question" || b.kind === "question") ? 50 : 120;
+          const shift = (dist - target) * .035;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          a.x += ux * shift;
+          a.y += uy * shift;
+          b.x -= ux * shift;
+          b.y -= uy * shift;
+        });
+        for (let i = 0; i < graphNodes.length; i++) {
+          for (let j = i + 1; j < graphNodes.length; j++) {
+            const a = graphNodes[i];
+            const b = graphNodes[j];
+            const dx = b.x - a.x || .1;
+            const dy = b.y - a.y || .1;
+            const dist = Math.hypot(dx, dy);
+            const min = radiusFor(a) + radiusFor(b) + 18;
+            if (dist < min) {
+              const push = (min - dist) / 2;
+              const ux = dx / dist;
+              const uy = dy / dist;
+              a.x -= ux * push;
+              a.y -= uy * push;
+              b.x += ux * push;
+              b.y += uy * push;
+            }
+          }
+        }
+        graphNodes.forEach(node => {
+          node.x = Math.max(margin, Math.min(width - margin, node.x));
+          node.y = Math.max(margin, Math.min(height - margin - 18, node.y));
+        });
+      }
+    }
     function kindOffset(kind) {
-      return {assumption: -.2, evidence: .5, source: 1.1, test: 2.1, eval: 2.8, unknown: 0}[kind] || 0;
+      return {assumption: -.2, evidence: .5, source: 1.1, question: -1.55, test: 2.1, eval: 2.8, unknown: 0}[kind] || 0;
     }
     function renderLinks() {
       linkLayer.innerHTML = "";
@@ -949,14 +1132,17 @@ INDEX_HTML = """<!doctype html>
       graphNodes.forEach(node => {
         const group = svgEl("g", {class: `node ${pulsing.has(node.id) ? "pulse" : ""}`, "data-id": node.id, transform: `translate(${node.x},${node.y})`});
         group.appendChild(svgEl("circle", {r: radiusFor(node), fill: colorFor(node)}));
-        const text = svgEl("text", {y: radiusFor(node) + 13, "text-anchor": "middle"});
+        const title = svgEl("title", {});
+        title.textContent = node.label;
+        group.appendChild(title);
+        const text = svgEl("text", {y: radiusFor(node) + 12, "text-anchor": "middle"});
         text.textContent = shortLabel(node.label);
         group.appendChild(text);
         nodeLayer.appendChild(group);
       });
     }
     function radiusFor(d) {
-      return {assumption: 18, evidence: 13, source: 12, test: 14, eval: 14, unknown: 10}[d.kind] || 11;
+      return {assumption: 14, question: 9, evidence: 11, source: 10, test: 12, eval: 12, unknown: 9}[d.kind] || 10;
     }
     function colorFor(d) {
       if (d.kind === "source") return "#60744d";
@@ -969,7 +1155,7 @@ INDEX_HTML = """<!doctype html>
     }
     function shortLabel(value) {
       const text = String(value || "");
-      return text.length > 28 ? `${text.slice(0, 25)}...` : text;
+      return text.length > 22 ? `${text.slice(0, 21)}…` : text;
     }
     function svgEl(name, attrs) {
       const el = document.createElementNS("http://www.w3.org/2000/svg", name);
@@ -983,6 +1169,7 @@ INDEX_HTML = """<!doctype html>
         const div = document.createElement("div");
         div.className = "worker running";
         div.dataset.id = id;
+        div.dataset.task = id;
         div.innerHTML = `<strong><span class="spinner"></span>${backend} worker</strong><div>task ${i + 1}</div>`;
         workers.appendChild(div);
         workerById.set(id, div);
@@ -995,10 +1182,22 @@ INDEX_HTML = """<!doctype html>
       if (taskId) div.dataset.task = taskId;
       div.className = status === "failed" ? "worker" : "worker done";
       div.innerHTML = `<strong>${status === "failed" ? "failed" : "done"}</strong><div>${escapeHtml(taskId || "task")}</div>`;
+      bumpCounter("tests", 0);
     }
     function updateCounters(meta) {
       latestCounters = {...latestCounters, ...meta};
       renderCounters();
+    }
+    function bumpCounter(key, amount = 1) {
+      if (!key) return;
+      latestCounters[key] = Math.max(Number(latestCounters[key] || 0), Number(latestCounters[key] || 0) + amount);
+      renderCounters();
+    }
+    function counterForNode(kind) {
+      if (kind === "source") return "sources";
+      if (kind === "evidence") return "evidence";
+      if (kind === "test" || kind === "eval") return "tests";
+      return null;
     }
     function renderCounters() {
       document.getElementById("counters").innerHTML = [
@@ -1057,7 +1256,6 @@ INDEX_HTML = """<!doctype html>
         summary.workshop_path ? `<p><strong>Workshop:</strong> ${escapeHtml(summary.workshop_path)}</p>` : ""
       ].join("");
       document.getElementById("answer").classList.add("visible");
-      document.getElementById("answer").scrollIntoView({behavior: "smooth", block: "nearest"});
     }
     function tableHtml(headers, rows) {
       if (!rows.length) return "<tbody><tr><td>No rows yet.</td></tr></tbody>";
@@ -1113,6 +1311,7 @@ INDEX_HTML = """<!doctype html>
       });
     }
     ask.addEventListener("click", startRun);
+    document.getElementById("answerClose").addEventListener("click", () => document.getElementById("answer").classList.remove("visible"));
     stop.addEventListener("click", () => {
       if (source) source.close();
       ask.disabled = false;

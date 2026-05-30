@@ -215,3 +215,7 @@ The realtime app is now a research cockpit instead of a fixed pipeline diagram. 
 - `counter`: cumulative sources, evidence, leaps, conflicts, and tests.
 
 The cockpit has three zones: Thinking transcript, Belief Graph, and Fan-out/Counters. Live SDK runs use `Runner.run_streamed`; deterministic, scripted, replay, and recovered-timeout paths also emit graph snapshots so the demo remains inspectable when live services are slow.
+
+## Milestone 34
+
+Performance work keeps strategy on the OpenAI Agents SDK while reducing demo latency. Live SDK orchestration now defaults to `max_turns=3` and instructs the agent to make one strategy decision before calling the composite `run_deterministic_research_loop_tool`, while the loop still emits graph and counter events for the realtime cockpit. Local fan-out batches run concurrently with ordered results and per-task failure isolation. Modal functions use `min_containers=1` with a `scaledown_window`, and `python -m pragmatic modal-prewarm` can warm both remote jobs before a live run; the Starlette app can also prewarm in the background when `PRAGMATIC_PREWARM_MODAL=1` is set.

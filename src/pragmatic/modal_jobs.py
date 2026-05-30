@@ -7,6 +7,8 @@ from pragmatic.schemas import Assumption, EvidenceItem, ResearchTask, ResearchTa
 
 MODAL_TASK_TIMEOUT_SECONDS = 300
 MODAL_TASK_RETRIES = 1
+MODAL_MIN_CONTAINERS = 1
+MODAL_SCALEDOWN_WINDOW_SECONDS = 600
 
 try:
     import modal
@@ -26,7 +28,12 @@ if modal is not None:
     )
     app = modal.App(name="pragmatic", image=image)
 
-    @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
+    @app.function(
+        timeout=MODAL_TASK_TIMEOUT_SECONDS,
+        retries=MODAL_TASK_RETRIES,
+        min_containers=MODAL_MIN_CONTAINERS,
+        scaledown_window=MODAL_SCALEDOWN_WINDOW_SECONDS,
+    )
     def extract_source_job(source: dict[str, Any], assumptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         from pragmatic.extractors import extract_source_evidence
         from pragmatic.schemas import Assumption, Source
@@ -41,7 +48,12 @@ if modal is not None:
             for evidence_item in extract_source_evidence(parsed_source, parsed_assumptions)
         ]
 
-    @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
+    @app.function(
+        timeout=MODAL_TASK_TIMEOUT_SECONDS,
+        retries=MODAL_TASK_RETRIES,
+        min_containers=MODAL_MIN_CONTAINERS,
+        scaledown_window=MODAL_SCALEDOWN_WINDOW_SECONDS,
+    )
     def research_task_job(task: dict[str, Any]) -> dict[str, Any]:
         from pragmatic.execution import run_research_task_local
         from pragmatic.schemas import ResearchTask
@@ -117,6 +129,43 @@ def run_research_tasks_with_modal(tasks: list[ResearchTask]) -> list[ResearchTas
         _coerce_remote_task_result(task, result)
         for task, result in zip(tasks, raw_results, strict=True)
     ]
+
+
+def prewarm_modal_functions() -> dict[str, str]:
+    if modal is None or app is None or extract_source_job is None or research_task_job is None:
+        raise ModalExtractionUnavailable("Install and configure Modal to prewarm Pragmatic jobs.")
+
+    source = Source(
+        id="prewarm_source_001",
+        title="Prewarm source",
+        url="https://example.test/prewarm",
+        source_type="paper",
+        text="Prewarm payload for Modal container readiness.",
+    )
+    assumption = Assumption(
+        id="A0",
+        text="Prewarm assumption.",
+        why_it_matters="Keeps the Modal container warm before the demo run.",
+        evidence_needed=["No evidence needed for prewarm."],
+    )
+    task = ResearchTask(
+        id="prewarm_task_001",
+        task_type="parse_source",
+        source=source,
+        metadata={"purpose": "modal_prewarm"},
+    )
+
+    with app.run():
+        extract_source_job.remote(source.model_dump(), [assumption.model_dump()])
+        research_task_job.remote(task.model_dump())
+
+    return {
+        "status": "succeeded",
+        "extract_source_job": "warmed",
+        "research_task_job": "warmed",
+        "min_containers": str(MODAL_MIN_CONTAINERS),
+        "scaledown_window": str(MODAL_SCALEDOWN_WINDOW_SECONDS),
+    }
 
 
 def extract_evidence_with_modal(

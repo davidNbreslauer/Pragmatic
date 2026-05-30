@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import logging
 import os
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,6 +28,7 @@ DEFAULT_THESIS = "Spider silk for bullet proof vests"
 MAX_STORED_EVENTS_PER_JOB = 2000
 RUNS: dict[str, dict[str, Any]] = {}
 RUN_LOCK = threading.Lock()
+LOG = logging.getLogger("pragmatic.realtime")
 
 # Realtime cockpit event taxonomy:
 # - coarse events keep the stable {stage,status,message,metadata,index} envelope.
@@ -524,6 +527,29 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 
 def _json_for_script(value: Any) -> str:
     return html.escape(json.dumps(value), quote=False)
+
+
+def _maybe_start_modal_prewarm() -> None:
+    if os.getenv("PRAGMATIC_PREWARM_MODAL", "").lower() not in {"1", "true", "yes"}:
+        return
+
+    def worker() -> None:
+        try:
+            from pragmatic.modal_jobs import prewarm_modal_functions
+
+            result = prewarm_modal_functions()
+            LOG.info("Modal prewarm finished: %s", result)
+        except Exception as exc:  # pragma: no cover - depends on live Modal availability.
+            LOG.warning("Modal prewarm skipped: %s: %s", type(exc).__name__, exc)
+
+    threading.Thread(target=worker, name="pragmatic-modal-prewarm", daemon=True).start()
+
+
+@asynccontextmanager
+async def _lifespan(app: Starlette):
+    del app
+    _maybe_start_modal_prewarm()
+    yield
 
 
 INDEX_HTML = """<!doctype html>
@@ -1332,4 +1358,5 @@ app = Starlette(
         Route("/api/runs/{job_id}", get_run, methods=["GET"]),
         Route("/api/runs/{job_id}/events", run_events, methods=["GET"]),
     ],
+    lifespan=_lifespan,
 )

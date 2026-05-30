@@ -1,4 +1,5 @@
 from pragmatic import DEFAULT_THESIS
+from pragmatic.cli import main
 from pragmatic.corpus import load_corpus
 from pragmatic.execution import (
     LocalResearchExecutor,
@@ -10,7 +11,10 @@ from pragmatic.execution import (
 from pragmatic.modal_jobs import (
     MODAL_TASK_RETRIES,
     MODAL_TASK_TIMEOUT_SECONDS,
+    MODAL_MIN_CONTAINERS,
+    MODAL_SCALEDOWN_WINDOW_SECONDS,
     make_research_task_payloads,
+    prewarm_modal_functions,
     research_task_job_local,
     run_research_tasks_with_modal,
 )
@@ -100,6 +104,54 @@ def test_modal_task_payload_preserves_general_task_shape():
     parsed_result = ResearchTaskResult.model_validate(raw_result)
     assert parsed_result.task_id == tasks[0].id
     assert parsed_result.backend == "modal"
+
+
+def test_modal_prewarm_invokes_both_remote_functions(monkeypatch):
+    calls = []
+
+    class FakeApp:
+        def run(self):
+            return self
+
+        def __enter__(self):
+            calls.append(("app", "enter"))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("app", "exit"))
+            return False
+
+    class FakeRemoteJob:
+        def __init__(self, name):
+            self.name = name
+
+        def remote(self, *payloads):
+            calls.append((self.name, payloads))
+            return {"ok": True}
+
+    monkeypatch.setattr("pragmatic.modal_jobs.modal", object())
+    monkeypatch.setattr("pragmatic.modal_jobs.app", FakeApp())
+    monkeypatch.setattr("pragmatic.modal_jobs.extract_source_job", FakeRemoteJob("extract"))
+    monkeypatch.setattr("pragmatic.modal_jobs.research_task_job", FakeRemoteJob("task"))
+
+    result = prewarm_modal_functions()
+
+    assert result["status"] == "succeeded"
+    assert result["min_containers"] == str(MODAL_MIN_CONTAINERS)
+    assert result["scaledown_window"] == str(MODAL_SCALEDOWN_WINDOW_SECONDS)
+    assert [call[0] for call in calls] == ["app", "extract", "task", "app"]
+
+
+def test_cli_modal_prewarm_reports_success(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "pragmatic.modal_jobs.prewarm_modal_functions",
+        lambda: {"status": "succeeded"},
+    )
+
+    exit_code = main(["modal-prewarm"])
+
+    assert exit_code == 0
+    assert '"status": "succeeded"' in capsys.readouterr().out
 
 
 def test_modal_remote_runner_maps_payloads_and_preserves_modal_backend(monkeypatch):

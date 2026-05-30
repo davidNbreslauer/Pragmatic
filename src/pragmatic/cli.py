@@ -154,6 +154,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Exit non-zero when any integration is unavailable, skipped, or failed.",
     )
 
+    subparsers.add_parser(
+        "modal-prewarm",
+        help="Prewarm Pragmatic Modal functions before a live demo run.",
+    )
+
     scenarios_parser = subparsers.add_parser(
         "demo-scenarios",
         help="List curated hackathon demo scenarios.",
@@ -338,6 +343,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         if args.fail_on_degraded and result.status == "degraded":
             return 1
+        return 0
+
+    if args.command == "modal-prewarm":
+        from pragmatic.modal_jobs import prewarm_modal_functions
+
+        try:
+            payload = prewarm_modal_functions()
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "status": "failed",
+                        "error_type": type(exc).__name__,
+                        "message": str(exc),
+                    },
+                    indent=2,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        print(json.dumps(payload, indent=2))
         return 0
 
     if args.command == "demo-scenarios":

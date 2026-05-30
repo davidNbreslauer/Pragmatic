@@ -118,7 +118,17 @@ class LocalResearchExecutor:
     backend: ExecutionBackend = "local"
 
     def run_batch(self, tasks: list[ResearchTask]) -> ResearchBatchResult:
-        results = [run_research_task_local(task, backend=self.backend) for task in tasks]
+        if tasks:
+            max_workers = min(len(tasks), 8)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = list(
+                    executor.map(
+                        lambda task: _run_local_batch_task(task, self.backend),
+                        tasks,
+                    )
+                )
+        else:
+            results = []
         return ResearchBatchResult(
             backend=self.backend,
             attempted_backend=self.backend,
@@ -170,6 +180,26 @@ def run_research_task_local(
             error=f"{type(exc).__name__}: {exc}",
         )
     return _with_task_runtime_metadata(result, task, started)
+
+
+def _run_local_batch_task(
+    task: ResearchTask,
+    backend: ExecutionBackend,
+) -> ResearchTaskResult:
+    started = time.perf_counter()
+    try:
+        return run_research_task_local(task, backend=backend)
+    except Exception as exc:
+        result = ResearchTaskResult(
+            task_id=task.id,
+            task_type=task.task_type,
+            backend=backend,
+            status="failed",
+            source_ids=_task_source_ids(task),
+            error=f"{type(exc).__name__}: {exc}",
+            metadata={"worker_status": "failed"},
+        )
+        return _with_task_runtime_metadata(result, task, started)
 
 
 def _run_modal_batch_safely(tasks, runner):

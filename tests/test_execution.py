@@ -15,7 +15,7 @@ from pragmatic.modal_jobs import (
     run_research_tasks_with_modal,
 )
 from pragmatic.research_loop import decompose_thesis, run_research_loop
-from pragmatic.schemas import EvidenceItem, ResearchTaskResult
+from pragmatic.schemas import EvidenceItem, ResearchTask, ResearchTaskResult, Source
 
 
 def test_local_research_executor_runs_typed_source_tasks():
@@ -46,6 +46,45 @@ def test_source_parse_tasks_record_worker_metadata():
     assert task_result.metadata["worker_status"] == "completed"
     assert "duration_ms" in task_result.metadata
     assert task_result.metadata["output_source_count"] == "1"
+
+
+def test_local_research_executor_parallel_batch_preserves_order_and_failures(monkeypatch):
+    tasks = [
+        ResearchTask(
+            id=f"task_{index}",
+            task_type="parse_source",
+            source=Source(
+                id=f"source_{index}",
+                title=f"Source {index}",
+                url=f"https://example.test/{index}",
+                source_type="paper",
+                text="source text",
+            ),
+        )
+        for index in range(4)
+    ]
+
+    def fake_run_task(task, *, backend):
+        if task.id == "task_1":
+            raise RuntimeError("isolated failure")
+        return ResearchTaskResult(
+            task_id=task.id,
+            task_type=task.task_type,
+            backend=backend,
+            status="succeeded",
+            source_ids=[task.source.id],
+        )
+
+    monkeypatch.setattr("pragmatic.execution.run_research_task_local", fake_run_task)
+
+    result = LocalResearchExecutor().run_batch(tasks)
+
+    assert [item.task_id for item in result.results] == [task.id for task in tasks]
+    assert result.results[1].status == "failed"
+    assert "isolated failure" in (result.results[1].error or "")
+    assert result.results[2].status == "succeeded"
+    assert result.metadata["task_count"] == "4"
+    assert result.metadata["failed"] == "1"
 
 
 def test_modal_task_payload_preserves_general_task_shape():

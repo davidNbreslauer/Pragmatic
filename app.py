@@ -742,10 +742,14 @@ def render_observability(state: ResearchState) -> None:
 
     if record.trace_path:
         st.caption(f"Local trace artifact: {record.trace_path}")
+    if record.workshop_path:
+        st.caption(f"Workshop bundle: {record.workshop_path}")
     if record.message:
         st.caption(record.message)
     if record.eval_artifact_ids:
         st.caption(f"Eval artifacts: {', '.join(record.eval_artifact_ids)}")
+    if record.failure_artifact_ids:
+        st.caption(f"Failure artifacts: {', '.join(record.failure_artifact_ids)}")
     if record.workshop_artifact_ids:
         st.caption(f"Workshop artifacts: {len(record.workshop_artifact_ids)} recorded")
 

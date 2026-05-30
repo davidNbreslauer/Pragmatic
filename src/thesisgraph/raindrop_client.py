@@ -14,6 +14,7 @@ from thesisgraph.schemas import ObservabilityRecord, ResearchState
 ObservabilityMode = Literal["local", "raindrop", "off"]
 
 DEFAULT_TRACE_DIR = Path(".thesisgraph") / "traces"
+DEFAULT_WORKSHOP_DIR = Path(".thesisgraph") / "workshops"
 
 
 def record_research_run(
@@ -90,6 +91,38 @@ def build_trace_payload(state: ResearchState, *, trace_id: str) -> dict:
     }
 
 
+def build_workshop_payload(state: ResearchState, *, trace_id: str) -> dict:
+    eval_workshop = state.eval_workshop or build_eval_workshop(state)
+    failure_artifacts = _failure_artifacts(state)
+    eval_artifacts = _eval_artifacts(state)
+    replay_artifacts = [
+        {
+            "artifact_id": outcome.id,
+            "artifact_type": "replay_outcome",
+            **outcome.model_dump(),
+        }
+        for outcome in eval_workshop.replay_outcomes
+    ]
+    return {
+        "schema_version": "1",
+        "trace_id": trace_id,
+        "created_at": datetime.now(UTC).isoformat(),
+        "thesis": state.thesis.model_dump(),
+        "summary": {
+            "failure_artifacts": len(failure_artifacts),
+            "eval_artifacts": len(eval_artifacts),
+            "replay_artifacts": len(replay_artifacts),
+            "task_spans": len(eval_workshop.task_spans),
+            "failure_eval_links": len(eval_workshop.failure_eval_links),
+        },
+        "workshop": eval_workshop.model_dump(),
+        "failure_artifacts": failure_artifacts,
+        "eval_artifacts": eval_artifacts,
+        "replay_artifacts": replay_artifacts,
+        "raindrop_event_plan": _raindrop_event_plan(state, eval_workshop),
+    }
+
+
 def _record_local(
     state: ResearchState,
     *,
@@ -99,17 +132,23 @@ def _record_local(
     directory = Path(trace_dir) if trace_dir is not None else DEFAULT_TRACE_DIR
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{trace_id}.json"
+    workshop_path = _workshop_path(trace_id, trace_dir=trace_dir)
+    workshop_path.parent.mkdir(parents=True, exist_ok=True)
     payload = build_trace_payload(state, trace_id=trace_id)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    workshop_payload = build_workshop_payload(state, trace_id=trace_id)
+    workshop_path.write_text(json.dumps(workshop_payload, indent=2), encoding="utf-8")
     return ObservabilityRecord(
         trace_id=trace_id,
         backend="local",
         status="recorded",
         trace_path=str(path),
+        workshop_path=str(workshop_path),
         event_id=trace_id,
         eval_artifact_ids=[generated_eval.id for generated_eval in state.generated_evals],
+        failure_artifact_ids=_failure_artifact_ids(state),
         workshop_artifact_ids=_workshop_artifact_ids(state),
-        message="Recorded local Raindrop-compatible trace artifact.",
+        message="Recorded local Raindrop-compatible trace and workshop artifacts.",
     )
 
 
@@ -122,6 +161,8 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     raindrop.init(write_key, tracing_enabled=True, bypass_otel_for_tools=True)
     eval_workshop = state.eval_workshop or build_eval_workshop(state)
+    trace_payload = build_trace_payload(state, trace_id=trace_id)
+    workshop_payload = build_workshop_payload(state, trace_id=trace_id)
     interaction = raindrop.begin(
         user_id="thesisgraph-local",
         event="thesisgraph_research_run",
@@ -143,7 +184,13 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
             {
                 "type": "text",
                 "name": "ResearchState summary",
-                "value": json.dumps(build_trace_payload(state, trace_id=trace_id), indent=2),
+                "value": json.dumps(trace_payload, indent=2),
+                "role": "output",
+            },
+            {
+                "type": "text",
+                "name": "Raindrop Workshop bundle",
+                "value": json.dumps(workshop_payload, indent=2),
                 "role": "output",
             }
         ],
@@ -235,6 +282,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
         status="recorded",
         event_id=trace_id,
         eval_artifact_ids=[generated_eval.id for generated_eval in state.generated_evals],
+        failure_artifact_ids=_failure_artifact_ids(state),
         workshop_artifact_ids=_workshop_artifact_ids(state),
         message="Recorded run through Raindrop SDK.",
     )
@@ -247,3 +295,99 @@ def _workshop_artifact_ids(state: ResearchState) -> list[str]:
         *[link.id for link in eval_workshop.failure_eval_links],
         *[outcome.id for outcome in eval_workshop.replay_outcomes],
     ]
+
+
+def _failure_artifact_ids(state: ResearchState) -> list[str]:
+    return [
+        *[leap.id for leap in state.invalid_leaps],
+        *[conflict.id for conflict in state.evidence_conflicts],
+        *[
+            verifier_result.id
+            for verifier_result in state.verifier_results
+            if verifier_result.status == "fail"
+        ],
+    ]
+
+
+def _failure_artifacts(state: ResearchState) -> list[dict]:
+    return [
+        {
+            "artifact_id": leap.id,
+            "artifact_type": "invalid_leap",
+            **leap.model_dump(),
+        }
+        for leap in state.invalid_leaps
+    ] + [
+        {
+            "artifact_id": conflict.id,
+            "artifact_type": "evidence_conflict",
+            **conflict.model_dump(),
+        }
+        for conflict in state.evidence_conflicts
+    ] + [
+        {
+            "artifact_id": verifier_result.id,
+            "artifact_type": "verifier_failure",
+            **verifier_result.model_dump(),
+        }
+        for verifier_result in state.verifier_results
+        if verifier_result.status == "fail"
+    ]
+
+
+def _eval_artifacts(state: ResearchState) -> list[dict]:
+    eval_workshop = state.eval_workshop or build_eval_workshop(state)
+    source_ids_by_eval = {
+        link.target_id: {
+            "failure_link_id": link.id,
+            "failure_artifact_id": link.source_id,
+            "affected_assumption_ids": link.affected_assumption_ids,
+            "source_ids": link.source_ids,
+        }
+        for link in eval_workshop.failure_eval_links
+        if link.target_id.startswith("eval_")
+    }
+    return [
+        {
+            "artifact_id": generated_eval.id,
+            "artifact_type": "generated_eval",
+            **generated_eval.model_dump(),
+            "source_failure": source_ids_by_eval.get(generated_eval.id),
+        }
+        for generated_eval in state.generated_evals
+    ]
+
+
+def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
+    return [
+        {
+            "event": "thesisgraph.task_span",
+            "artifact_id": span.id,
+            "source_id": span.task_id,
+            "status": span.status,
+        }
+        for span in eval_workshop.task_spans
+    ] + [
+        {
+            "event": "thesisgraph.failure_to_eval",
+            "artifact_id": link.id,
+            "source_id": link.source_id,
+            "target_id": link.target_id,
+            "link_type": link.link_type,
+        }
+        for link in eval_workshop.failure_eval_links
+    ] + [
+        {
+            "event": "thesisgraph.generated_eval",
+            "artifact_id": generated_eval.id,
+            "source_id": None,
+            "status": "recorded",
+        }
+        for generated_eval in state.generated_evals
+    ]
+
+
+def _workshop_path(trace_id: str, *, trace_dir: str | Path | None = None) -> Path:
+    if trace_dir is None:
+        return DEFAULT_WORKSHOP_DIR / f"{trace_id}.json"
+    return Path(trace_dir) / "workshops" / f"{trace_id}.json"

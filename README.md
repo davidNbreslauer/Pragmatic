@@ -116,6 +116,10 @@ PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --
 
 Modal execution now ships the local `thesisgraph` package into the remote worker image, applies worker timeout/retry guardrails, and maps typed `ResearchTask` payloads through Modal with ordered parallel fan-out. Individual remote worker exceptions are converted into typed failed `ResearchTaskResult` records, while full Modal unavailability still falls back to the local executor when requested. Batch metadata now records task counts, success/failure counts, task types, Modal app name, timeout, and retry settings.
 
+## Milestone 21
+
+Raindrop Workshop observability now writes a durable workshop bundle alongside the chronological trace. Local and Raindrop modes share the same failure/eval/replay payload shape, including failure artifacts, generated eval artifacts linked to source failures, replay artifacts, and a Raindrop event plan. The Streamlit observability section now surfaces the workshop bundle path and failure artifact IDs.
+
 Run tests:
 
 ```bash

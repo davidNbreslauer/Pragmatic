@@ -238,8 +238,10 @@ class ObservabilityRecord(BaseModel):
     backend: ObservabilityBackend
     status: ObservabilityStatus
     trace_path: str | None = None
+    workshop_path: str | None = None
     event_id: str | None = None
     eval_artifact_ids: list[str] = Field(default_factory=list)
+    failure_artifact_ids: list[str] = Field(default_factory=list)
     workshop_artifact_ids: list[str] = Field(default_factory=list)
     message: str | None = None
 

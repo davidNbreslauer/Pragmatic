@@ -4,6 +4,7 @@ import json
 import os
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from thesisgraph import (
     DEFAULT_THESIS,
@@ -28,6 +29,10 @@ from thesisgraph.live_harness import load_latest_live_run
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
 from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
 from thesisgraph.schemas import ReplayResult, RunComparison
+from thesisgraph.ui_flow import (
+    build_orchestration_flow_snapshot,
+    render_orchestration_flow_html,
+)
 
 
 st.set_page_config(page_title="ThesisGraph", layout="wide")
@@ -323,6 +328,7 @@ def main() -> None:
 
     render_summary(state)
     render_demo_cockpit(state, selected_scenario)
+    render_orchestration_flow(state, selected_scenario)
     if "integration_doctor_json" in st.session_state:
         doctor_result = IntegrationDoctorResult.model_validate_json(
             st.session_state.integration_doctor_json
@@ -405,6 +411,16 @@ def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
             width="stretch",
             hide_index=True,
         )
+
+
+def render_orchestration_flow(state: ResearchState, scenario: DemoScenario) -> None:
+    source = st.session_state.get("current_run_source", "Current session")
+    snapshot = build_orchestration_flow_snapshot(
+        state,
+        scenario_name=scenario.name,
+        current_run_source=source,
+    )
+    components.html(render_orchestration_flow_html(snapshot), height=720, scrolling=False)
 
 
 def render_integration_doctor(result: IntegrationDoctorResult) -> None:

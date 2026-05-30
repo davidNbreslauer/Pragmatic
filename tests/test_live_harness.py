@@ -1,10 +1,11 @@
 import json
+import os
 from types import SimpleNamespace
 
 from thesisgraph import DEFAULT_THESIS
 from thesisgraph.agents import ResearchManager
 from thesisgraph.cli import main
-from thesisgraph.live_harness import run_live_harness_sync
+from thesisgraph.live_harness import load_latest_live_run, run_live_harness_sync
 
 
 def test_live_harness_dry_run_does_not_call_sdk(monkeypatch, tmp_path):
@@ -135,6 +136,39 @@ def test_live_harness_times_out_live_run(monkeypatch, tmp_path):
     assert result.status == "timed_out"
     assert result.error_type == "TimeoutError"
     assert result.state is None
+
+
+def test_load_latest_live_run_can_require_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    async def fake_run_live(self, *args, **kwargs):
+        del self, args, kwargs
+        return ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+
+    monkeypatch.setattr(ResearchManager, "run_live", fake_run_live)
+
+    ready = run_live_harness_sync(
+        DEFAULT_THESIS,
+        mode="dry_run",
+        output_dir=tmp_path,
+    )
+    succeeded = run_live_harness_sync(
+        DEFAULT_THESIS,
+        mode="live",
+        allow_live_sdk=True,
+        observability_mode="off",
+        output_dir=tmp_path,
+    )
+    ready_path = tmp_path / f"{ready.id}.json"
+    succeeded_path = tmp_path / f"{succeeded.id}.json"
+    os.utime(succeeded_path, (1, 1))
+    os.utime(ready_path, (2, 2))
+
+    latest = load_latest_live_run(tmp_path, require_state=True)
+
+    assert latest is not None
+    assert latest.id == succeeded.id
+    assert latest.state is not None
 
 
 def test_cli_live_harness_dry_run_writes_output(tmp_path):

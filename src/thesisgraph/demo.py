@@ -20,6 +20,23 @@ DEFAULT_DEMO_DIR = Path(".thesisgraph") / "demo"
 def demo_scenarios() -> list[DemoScenario]:
     return [
         DemoScenario(
+            id="live_full",
+            name="Live Full System",
+            thesis=DEFAULT_THESIS,
+            orchestration="live_sdk",
+            execution_backend="modal",
+            observability_backend="local",
+            live_dry_run=False,
+            require_demo_proof=True,
+            proves=[
+                "Live OpenAI Agents SDK orchestration",
+                "Modal remote research fan-out",
+                "Raindrop Workshop artifact bundle",
+                "Demo proof gate before accepting the run",
+            ],
+            notes="Default hackathon run: live SDK, Modal execution, and Workshop observability.",
+        ),
+        DemoScenario(
             id="core_loop",
             name="Core Evidence Loop",
             thesis=DEFAULT_THESIS,

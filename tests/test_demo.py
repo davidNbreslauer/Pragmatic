@@ -8,9 +8,20 @@ def test_demo_scenarios_cover_core_modal_replay_and_live():
     scenarios = demo_scenarios()
     scenario_ids = {scenario.id for scenario in scenarios}
 
-    assert {"core_loop", "modal_fanout", "failure_replay", "live_guarded"}.issubset(
+    assert {
+        "live_full",
+        "core_loop",
+        "modal_fanout",
+        "failure_replay",
+        "live_guarded",
+    }.issubset(
         scenario_ids
     )
+    live_full = demo_scenario_by_id("live_full")
+    assert live_full.orchestration == "live_sdk"
+    assert live_full.execution_backend == "modal"
+    assert live_full.live_dry_run is False
+    assert live_full.require_demo_proof is True
     assert demo_scenario_by_id("modal_fanout").execution_backend == "modal"
     assert demo_scenario_by_id("failure_replay").replay_demo is True
 
@@ -35,7 +46,7 @@ def test_cli_demo_scenarios_and_smoke(tmp_path, capsys):
 
     assert exit_code == 0
     payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
-    assert payload[0]["id"] == "core_loop"
+    assert payload[0]["id"] == "live_full"
 
     exit_code = main(["demo-smoke", "--output-dir", str(tmp_path / "smoke"), "--fail-on-fail"])
     captured = capsys.readouterr()

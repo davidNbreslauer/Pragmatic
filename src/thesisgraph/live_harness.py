@@ -262,6 +262,38 @@ def build_live_run_proof(
     )
 
 
+def load_live_run_result(path: str | Path) -> LiveRunResult:
+    artifact_path = Path(path)
+    result = LiveRunResult.model_validate_json(artifact_path.read_text(encoding="utf-8"))
+    result.output_path = result.output_path or str(artifact_path)
+    return result
+
+
+def load_latest_live_run(
+    output_dir: str | Path | None = None,
+    *,
+    require_state: bool = False,
+) -> LiveRunResult | None:
+    directory = Path(output_dir) if output_dir is not None else DEFAULT_LIVE_RUN_DIR
+    if not directory.exists():
+        return None
+
+    candidates = sorted(
+        [path for path in directory.glob("*.json") if path.is_file()],
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
+    )
+    for path in candidates:
+        try:
+            result = load_live_run_result(path)
+        except Exception:
+            continue
+        if require_state and result.state is None:
+            continue
+        return result
+    return None
+
+
 def _blocked_result(
     result_id: str,
     created_at: str,

@@ -24,12 +24,24 @@ from thesisgraph import (
     run_integration_doctor,
     save_eval_snapshot,
 )
+from thesisgraph.live_harness import load_latest_live_run
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
 from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
 from thesisgraph.schemas import ReplayResult, RunComparison
 
 
 st.set_page_config(page_title="ThesisGraph", layout="wide")
+
+DEFAULT_DEMO_SCENARIO_ID = "live_full"
+DEFAULT_LIVE_SDK_MODEL = "gpt-5-mini"
+ORCHESTRATION_OPTIONS = ["deterministic", "scripted_sdk", "live_sdk"]
+EXECUTION_OPTIONS = ["local", "modal"]
+OBSERVABILITY_OPTIONS = ["local", "raindrop", "off"]
+OBSERVABILITY_LABELS = {
+    "local": "Raindrop Workshop (local)",
+    "raindrop": "Raindrop SDK",
+    "off": "Off",
+}
 
 
 def main() -> None:
@@ -38,60 +50,73 @@ def main() -> None:
     with st.sidebar:
         st.header("Run")
         scenarios = demo_scenarios()
+        _initialize_demo_controls(scenarios)
         scenario_ids = [scenario.id for scenario in scenarios]
         selected_scenario_id = st.selectbox(
             "Demo scenario",
             options=scenario_ids,
+            index=scenario_ids.index(st.session_state.demo_scenario_id),
             format_func=lambda scenario_id: next(
                 scenario.name for scenario in scenarios if scenario.id == scenario_id
             ),
+            key="demo_scenario_id",
+            on_change=_apply_selected_demo_scenario,
         )
         selected_scenario = next(
             scenario for scenario in scenarios if scenario.id == selected_scenario_id
         )
-        thesis_text = st.text_area("Thesis", value=selected_scenario.thesis, height=140)
-        max_iterations = st.slider("Iterations", min_value=1, max_value=3, value=1)
+        st.button("Apply Scenario", width="stretch", on_click=_apply_selected_demo_scenario)
+        thesis_text = st.text_area("Thesis", height=140, key="thesis_text")
+        max_iterations = st.slider("Iterations", min_value=1, max_value=3, key="max_iterations")
         orchestration = st.selectbox(
             "Orchestration",
-            options=["deterministic", "scripted_sdk", "live_sdk"],
-            index=["deterministic", "scripted_sdk", "live_sdk"].index(
-                selected_scenario.orchestration
-            ),
+            options=ORCHESTRATION_OPTIONS,
+            index=ORCHESTRATION_OPTIONS.index(st.session_state.orchestration),
+            key="orchestration",
         )
-        live_sdk_enabled = st.checkbox("Enable live SDK calls", value=False)
-        live_sdk_model = st.text_input("Live SDK model", value="")
-        live_sdk_dry_run = st.checkbox("Dry-run live SDK", value=selected_scenario.live_dry_run)
+        live_sdk_enabled = st.checkbox("Enable live SDK calls", key="live_sdk_enabled")
+        live_sdk_model = st.text_input("Live SDK model", key="live_sdk_model")
+        live_sdk_dry_run = st.checkbox("Dry-run live SDK", key="live_sdk_dry_run")
         live_sdk_require_demo_proof = st.checkbox(
             "Require demo proof",
-            value=selected_scenario.require_demo_proof,
+            key="live_sdk_require_demo_proof",
         )
-        live_sdk_max_turns = st.slider("Live max turns", min_value=1, max_value=10, value=4)
+        live_sdk_max_turns = st.slider(
+            "Live max turns",
+            min_value=1,
+            max_value=20,
+            key="live_sdk_max_turns",
+        )
         live_sdk_timeout = st.number_input(
             "Live timeout seconds",
             min_value=5,
             max_value=300,
-            value=60,
             step=5,
+            key="live_sdk_timeout",
         )
         execution_backend = st.selectbox(
             "Execution",
-            options=["local", "modal"],
-            index=["local", "modal"].index(selected_scenario.execution_backend),
+            options=EXECUTION_OPTIONS,
+            index=EXECUTION_OPTIONS.index(st.session_state.execution_backend),
+            key="execution_backend",
         )
         observability_mode = st.selectbox(
             "Observability",
-            options=["local", "raindrop", "off"],
-            index=["local", "raindrop", "off"].index(selected_scenario.observability_backend),
+            options=OBSERVABILITY_OPTIONS,
+            index=OBSERVABILITY_OPTIONS.index(st.session_state.observability_mode),
+            key="observability_mode",
+            format_func=lambda option: OBSERVABILITY_LABELS[option],
         )
         st.header("Integrations")
-        doctor_openai_live = st.checkbox("Doctor: live OpenAI API", value=False)
-        doctor_modal_remote = st.checkbox("Doctor: remote Modal task", value=False)
+        doctor_openai_live = st.checkbox("Doctor: live OpenAI API", key="doctor_openai_live")
+        doctor_modal_remote = st.checkbox("Doctor: remote Modal task", key="doctor_modal_remote")
         doctor_clicked = st.button("Run Integration Doctor", width="stretch")
         demo_smoke_clicked = st.button("Run Demo Smoke", width="stretch")
 
         st.header("Replay")
-        replay_demo = st.checkbox("Replay demo", value=selected_scenario.replay_demo)
+        replay_demo = st.checkbox("Replay demo", key="replay_demo")
         run_clicked = st.button("Run ThesisGraph", type="primary", width="stretch")
+        load_latest_live_clicked = st.button("Load Latest Live Run", width="stretch")
 
         st.header("History")
         saved_runs = list_runs()
@@ -146,7 +171,11 @@ def main() -> None:
             disabled=not selected_eval_snapshot_id,
         )
 
-    if run_clicked or "research_state_json" not in st.session_state:
+    if load_latest_live_clicked:
+        if not _load_latest_live_run_into_session():
+            st.warning("No live run artifact with a ResearchState was found.")
+
+    if run_clicked:
         if replay_demo:
             replay = run_replay_demo(
                 thesis_text,
@@ -156,6 +185,7 @@ def main() -> None:
             )
             st.session_state.replay_result_json = replay.model_dump_json()
             st.session_state.research_state_json = replay.replay_pass.model_dump_json()
+            st.session_state.current_run_source = f"Replay demo: {selected_scenario.name}"
             st.session_state.pop("live_run_result_json", None)
         else:
             manager = ResearchManager(model=live_sdk_model or None)
@@ -188,6 +218,7 @@ def main() -> None:
                         execution_backend=execution_backend,
                         observability_mode="off",
                     )
+                st.session_state.current_run_source = _live_run_source_label(live_result)
             elif orchestration == "scripted_sdk":
                 state = manager.run_sdk_orchestrated(
                     thesis_text,
@@ -195,6 +226,7 @@ def main() -> None:
                     execution_backend=execution_backend,
                     observability_mode=observability_mode,
                 )
+                st.session_state.current_run_source = f"Scripted SDK run: {selected_scenario.name}"
                 st.session_state.pop("replay_result_json", None)
                 st.session_state.pop("live_run_result_json", None)
             else:
@@ -204,13 +236,24 @@ def main() -> None:
                     execution_backend=execution_backend,
                     observability_mode=observability_mode,
                 )
+                st.session_state.current_run_source = f"Deterministic run: {selected_scenario.name}"
                 st.session_state.pop("replay_result_json", None)
                 st.session_state.pop("live_run_result_json", None)
             st.session_state.research_state_json = state.model_dump_json()
         st.session_state.pop("run_comparison_json", None)
-        if run_clicked:
-            st.session_state.pop("eval_suite_result_json", None)
-            st.session_state.pop("eval_snapshot_comparison_json", None)
+        st.session_state.pop("eval_suite_result_json", None)
+        st.session_state.pop("eval_snapshot_comparison_json", None)
+    elif "research_state_json" not in st.session_state:
+        should_load_latest = not st.session_state.pop("awaiting_scenario_run", False)
+        if not should_load_latest or not _load_latest_live_run_into_session():
+            preview_state = ResearchManager().run_deterministic(
+                thesis_text,
+                max_iterations=1,
+                execution_backend="local",
+                observability_mode="off",
+            )
+            st.session_state.research_state_json = preview_state.model_dump_json()
+            st.session_state.current_run_source = "Initial preview"
     elif not replay_demo:
         st.session_state.pop("replay_result_json", None)
 
@@ -218,7 +261,9 @@ def main() -> None:
         loaded_state = load_run(selected_run_id)
         st.session_state.research_state_json = loaded_state.model_dump_json()
         st.session_state.loaded_run_id = selected_run_id
+        st.session_state.current_run_source = f"Saved run: {selected_run_id}"
         st.session_state.pop("replay_result_json", None)
+        st.session_state.pop("live_run_result_json", None)
         st.session_state.pop("run_comparison_json", None)
 
     if eval_suite_clicked:
@@ -335,7 +380,8 @@ def render_summary(state: ResearchState) -> None:
 
 def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
     st.subheader("Demo Cockpit")
-    st.caption(scenario.name)
+    source = st.session_state.get("current_run_source", "Current session")
+    st.caption(f"{scenario.name} | {source}")
     modal_tasks = [result for result in state.research_task_results if result.backend == "modal"]
     workshop_artifacts = (
         len(state.observability.workshop_artifact_ids)
@@ -1033,6 +1079,117 @@ def _eval_snapshot_label(snapshot) -> str:
         f"{snapshot.created_at[:19]} | {snapshot.suite_status} "
         f"{snapshot.passed}/{snapshot.eval_case_count} | {thesis}"
     )
+
+
+def _initialize_demo_controls(scenarios: list[DemoScenario]) -> None:
+    scenario_ids = [scenario.id for scenario in scenarios]
+    if (
+        "demo_scenario_id" not in st.session_state
+        or st.session_state.demo_scenario_id not in scenario_ids
+    ):
+        st.session_state.demo_scenario_id = (
+            DEFAULT_DEMO_SCENARIO_ID
+            if DEFAULT_DEMO_SCENARIO_ID in scenario_ids
+            else scenario_ids[0]
+        )
+
+    selected_scenario = _scenario_by_id(scenarios, st.session_state.demo_scenario_id)
+    required_keys = {
+        "thesis_text",
+        "max_iterations",
+        "orchestration",
+        "live_sdk_enabled",
+        "live_sdk_dry_run",
+        "live_sdk_require_demo_proof",
+        "live_sdk_max_turns",
+        "live_sdk_timeout",
+        "execution_backend",
+        "observability_mode",
+        "replay_demo",
+        "doctor_openai_live",
+        "doctor_modal_remote",
+    }
+    if not required_keys.issubset(st.session_state.keys()):
+        _apply_demo_scenario(selected_scenario, clear_results=False)
+    st.session_state.setdefault("live_sdk_model", DEFAULT_LIVE_SDK_MODEL)
+
+
+def _apply_selected_demo_scenario() -> None:
+    scenarios = demo_scenarios()
+    scenario = _scenario_by_id(scenarios, st.session_state.demo_scenario_id)
+    _apply_demo_scenario(scenario, clear_results=True)
+
+
+def _apply_demo_scenario(scenario: DemoScenario, *, clear_results: bool) -> None:
+    st.session_state.thesis_text = scenario.thesis
+    st.session_state.max_iterations = 1
+    st.session_state.orchestration = scenario.orchestration
+    st.session_state.live_sdk_enabled = (
+        scenario.orchestration == "live_sdk" and not scenario.live_dry_run
+    )
+    st.session_state.live_sdk_dry_run = scenario.live_dry_run
+    st.session_state.live_sdk_require_demo_proof = scenario.require_demo_proof
+    st.session_state.live_sdk_model = DEFAULT_LIVE_SDK_MODEL
+    is_live_run = scenario.orchestration == "live_sdk" and not scenario.live_dry_run
+    st.session_state.live_sdk_max_turns = 12 if is_live_run else 4
+    st.session_state.live_sdk_timeout = 300 if is_live_run else 60
+    st.session_state.execution_backend = scenario.execution_backend
+    st.session_state.observability_mode = scenario.observability_backend
+    st.session_state.replay_demo = scenario.replay_demo
+    st.session_state.doctor_openai_live = (
+        scenario.orchestration == "live_sdk" and not scenario.live_dry_run
+    )
+    st.session_state.doctor_modal_remote = scenario.execution_backend == "modal"
+    st.session_state.current_run_source = f"Scenario settings: {scenario.name}"
+    if clear_results:
+        _clear_run_result_state()
+        st.session_state.awaiting_scenario_run = True
+
+
+def _clear_run_result_state() -> None:
+    for key in [
+        "research_state_json",
+        "replay_result_json",
+        "live_run_result_json",
+        "run_comparison_json",
+        "eval_suite_result_json",
+        "eval_snapshot_comparison_json",
+        "integration_doctor_json",
+        "demo_smoke_json",
+        "loaded_run_id",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def _scenario_by_id(scenarios: list[DemoScenario], scenario_id: str) -> DemoScenario:
+    for scenario in scenarios:
+        if scenario.id == scenario_id:
+            return scenario
+    raise ValueError(f"Scenario not found: {scenario_id}")
+
+
+def _load_latest_live_run_into_session() -> bool:
+    live_result = load_latest_live_run(require_state=True)
+    if live_result is None or live_result.state is None:
+        return False
+    st.session_state.live_run_result_json = live_result.model_dump_json()
+    st.session_state.research_state_json = live_result.state.model_dump_json()
+    st.session_state.current_run_source = _live_run_source_label(
+        live_result,
+        prefix="Loaded latest live run",
+    )
+    st.session_state.pop("replay_result_json", None)
+    st.session_state.pop("run_comparison_json", None)
+    return True
+
+
+def _live_run_source_label(
+    live_result: LiveRunResult,
+    *,
+    prefix: str = "Live SDK run",
+) -> str:
+    artifact = live_result.output_path or live_result.id
+    return f"{prefix}: {live_result.status} | {artifact}"
 
 
 if __name__ == "__main__":

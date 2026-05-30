@@ -219,3 +219,7 @@ The cockpit has three zones: Thinking transcript, Belief Graph, and Fan-out/Coun
 ## Milestone 34
 
 Performance work keeps strategy on the OpenAI Agents SDK while reducing demo latency. Live SDK orchestration now defaults to `max_turns=3` and instructs the agent to make one strategy decision before calling the composite `run_deterministic_research_loop_tool`, while the loop still emits graph and counter events for the realtime cockpit. Local fan-out batches run concurrently with ordered results and per-task failure isolation. Modal functions use `min_containers=1` with a `scaledown_window`, and `python -m pragmatic modal-prewarm` can warm both remote jobs before a live run; the Starlette app can also prewarm in the background when `PRAGMATIC_PREWARM_MODAL=1` is set.
+
+## Milestone 35
+
+The realtime cockpit now uses an Obsidian Observatory visual system: dark glass panels, mint-cyan live accents, glowing confidence-colored graph nodes, cinematic worker/counter motion, and a frosted answer drawer. The app keeps the same SSE event wiring and one-viewport layout while making the research run read like a precise mission-control instrument.

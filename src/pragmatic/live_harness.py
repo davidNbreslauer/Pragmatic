@@ -4,8 +4,10 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pragmatic.agents import (
     AgentsSDKCredentialsError,
@@ -27,6 +29,7 @@ from pragmatic.schemas import (
 
 
 DEFAULT_LIVE_RUN_DIR = Path(".pragmatic") / "live_runs"
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def run_live_harness_sync(
@@ -49,6 +52,7 @@ def run_live_harness_sync(
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
     require_demo_proof: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> LiveRunResult:
     try:
         asyncio.get_running_loop()
@@ -73,6 +77,7 @@ def run_live_harness_sync(
                 output_dir=output_dir,
                 write_artifact=write_artifact,
                 require_demo_proof=require_demo_proof,
+                progress_callback=progress_callback,
             )
         )
     raise RuntimeError("Use run_live_harness from an active event loop.")
@@ -98,6 +103,7 @@ async def run_live_harness(
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
     require_demo_proof: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> LiveRunResult:
     guardrails = LiveRunGuardrails(
         mode="live" if mode == "live" else "dry_run",
@@ -133,6 +139,15 @@ async def run_live_harness(
                 "Dry run validated the live SDK guardrails. No OpenAI API call was made."
             ),
         )
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "guardrails",
+                    "status": "succeeded",
+                    "message": "Dry run validated live SDK guardrails.",
+                    "metadata": {"mode": guardrails.mode},
+                }
+            )
         return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
 
     if not allow_live_sdk:
@@ -166,6 +181,19 @@ async def run_live_harness(
     manager = ResearchManager(model=model, max_turns=max_turns)
     started = time.monotonic()
     try:
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "live_harness",
+                    "status": "running",
+                    "message": "Live run harness accepted guardrails and started the research manager.",
+                    "metadata": {
+                        "mode": guardrails.mode,
+                        "execution_backend": execution_backend,
+                        "source_mode": source_mode,
+                    },
+                }
+            )
         state = await asyncio.wait_for(
             manager.run_live(
                 thesis_text,
@@ -179,6 +207,7 @@ async def run_live_harness(
                 max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
                 allow_live_sdk=True,
+                progress_callback=progress_callback,
             ),
             timeout=timeout_seconds,
         )

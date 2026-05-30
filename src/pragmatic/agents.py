@@ -4,6 +4,8 @@ import asyncio
 import inspect
 import json
 import os
+from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -81,6 +83,41 @@ class AgentsSDKCredentialsError(RuntimeError):
 
 class AgentOutputValidationError(RuntimeError):
     """Raised when an SDK run does not produce a valid ResearchState."""
+
+
+ProgressCallback = Callable[[dict[str, Any]], None]
+_PROGRESS_CALLBACK: ContextVar[ProgressCallback | None] = ContextVar(
+    "pragmatic_progress_callback",
+    default=None,
+)
+
+
+def _emit_progress(
+    stage: str,
+    status: str,
+    message: str,
+    **metadata: Any,
+) -> None:
+    callback = _PROGRESS_CALLBACK.get()
+    if callback is None:
+        return
+    callback(
+        {
+            "stage": stage,
+            "status": status,
+            "message": message,
+            "metadata": metadata,
+        }
+    )
+
+
+def _emit_tool_progress(
+    tool_name: str,
+    status: str,
+    message: str,
+    **metadata: Any,
+) -> None:
+    _emit_progress(f"tool.{tool_name}", status, message, tool_name=tool_name, **metadata)
 
 
 RESEARCH_MANAGER_INSTRUCTIONS = """
@@ -466,6 +503,7 @@ class ResearchManager:
         max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
+        progress_callback: ProgressCallback | None = None,
     ) -> ResearchState:
         return _run_awaitable(
             self.run_live(
@@ -480,6 +518,7 @@ class ResearchManager:
                 max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
                 allow_live_sdk=allow_live_sdk,
+                progress_callback=progress_callback,
             )
         )
 
@@ -497,6 +536,7 @@ class ResearchManager:
         max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
+        progress_callback: ProgressCallback | None = None,
     ) -> ResearchState:
         _require_live_sdk_enabled(allow_live_sdk)
         _require_agents_sdk()
@@ -532,7 +572,23 @@ class ResearchManager:
             f"observability_mode: {observability_mode}\n\n"
             f"Thesis: {thesis_text}"
         )
-        result = await Runner.run(agent, prompt, max_turns=self.max_turns)
+        token = _PROGRESS_CALLBACK.set(progress_callback)
+        try:
+            _emit_progress(
+                "live_sdk",
+                "running",
+                "OpenAI Agents SDK runner started.",
+                model=self.model or "",
+                max_turns=self.max_turns,
+            )
+            result = await Runner.run(agent, prompt, max_turns=self.max_turns)
+            _emit_progress(
+                "live_sdk",
+                "succeeded",
+                "OpenAI Agents SDK runner returned a final output.",
+            )
+        finally:
+            _PROGRESS_CALLBACK.reset(token)
         state = _coerce_research_state(result)
         state.agent_run = AgentRunRecord(
             mode="live_sdk",
@@ -614,15 +670,29 @@ if function_tool is not None:
     def decompose_thesis_tool(thesis_text: str) -> str:
         """Decompose a thesis into Pragmatic assumption objects as JSON."""
 
+        _emit_tool_progress("decompose_thesis_tool", "running", "Decomposing the question into assumptions.")
         assumptions = decompose_thesis(thesis_text)
+        _emit_tool_progress(
+            "decompose_thesis_tool",
+            "succeeded",
+            f"Created {len(assumptions)} assumptions.",
+            assumption_count=len(assumptions),
+        )
         return _to_json([assumption.model_dump() for assumption in assumptions])
 
     @function_tool
     def plan_questions_tool(state_json: str) -> str:
         """Generate initial research questions from a ResearchState JSON string."""
 
+        _emit_tool_progress("plan_questions_tool", "running", "Planning evidence questions.")
         state = ResearchState.model_validate_json(state_json)
         questions = generate_initial_questions(state)
+        _emit_tool_progress(
+            "plan_questions_tool",
+            "succeeded",
+            f"Planned {len(questions)} research questions.",
+            question_count=len(questions),
+        )
         return _to_json([question.model_dump() for question in questions])
 
     @function_tool
@@ -637,6 +707,13 @@ if function_tool is not None:
     ) -> str:
         """Retrieve prepared or live-web sources for research questions and return Source JSON."""
 
+        _emit_tool_progress(
+            "retrieve_sources_tool",
+            "running",
+            "Retrieving evidence sources.",
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+        )
         questions = [
             ResearchQuestion.model_validate(question)
             for question in json.loads(research_questions_json)
@@ -653,6 +730,12 @@ if function_tool is not None:
         else:
             corpus = load_corpus(corpus_path or None)
         sources = retrieve_sources(questions, corpus)
+        _emit_tool_progress(
+            "retrieve_sources_tool",
+            "succeeded",
+            f"Retrieved {len(sources)} sources.",
+            source_count=len(sources),
+        )
         return _to_json([source.model_dump() for source in sources])
 
     @function_tool
@@ -663,6 +746,7 @@ if function_tool is not None:
     ) -> str:
         """Score retrieval matches and return RetrievalScore JSON."""
 
+        _emit_tool_progress("score_retrieval_tool", "running", "Scoring source relevance.")
         questions = [
             ResearchQuestion.model_validate(question)
             for question in json.loads(research_questions_json)
@@ -673,18 +757,31 @@ if function_tool is not None:
         else:
             corpus = load_corpus(corpus_path or None)
             scores = score_retrieval(questions, corpus)
+        _emit_tool_progress(
+            "score_retrieval_tool",
+            "succeeded",
+            f"Recorded {len(scores)} retrieval scores.",
+            score_count=len(scores),
+        )
         return _to_json([score.model_dump() for score in scores])
 
     @function_tool
     def extract_evidence_tool(sources_json: str, assumptions_json: str) -> str:
         """Extract typed evidence items from source and assumption JSON."""
 
+        _emit_tool_progress("extract_evidence_tool", "running", "Extracting typed evidence.")
         sources = [Source.model_validate(source) for source in json.loads(sources_json)]
         assumptions = [
             Assumption.model_validate(assumption)
             for assumption in json.loads(assumptions_json)
         ]
         evidence = extract_evidence(sources, assumptions)
+        _emit_tool_progress(
+            "extract_evidence_tool",
+            "succeeded",
+            f"Extracted {len(evidence)} evidence items.",
+            evidence_count=len(evidence),
+        )
         return _to_json([item.model_dump() for item in evidence])
 
     @function_tool
@@ -697,6 +794,12 @@ if function_tool is not None:
     ) -> str:
         """Fan out source extraction ResearchTask objects and return ResearchBatchResult JSON."""
 
+        _emit_tool_progress(
+            "execute_source_research_tasks_tool",
+            "running",
+            "Fanning out parse and extraction tasks.",
+            execution_backend=execution_backend,
+        )
         sources = [Source.model_validate(source) for source in json.loads(sources_json)]
         assumptions = [
             Assumption.model_validate(assumption)
@@ -743,6 +846,13 @@ if function_tool is not None:
                 "backend_sequence": f"{parse_result.backend}->{extraction_result.backend}",
             },
         )
+        _emit_tool_progress(
+            "execute_source_research_tasks_tool",
+            "succeeded",
+            f"Completed {len(combined_results)} research tasks.",
+            task_count=len(combined_results),
+            backend=result.backend,
+        )
         return result.model_dump_json()
 
     @function_tool
@@ -755,6 +865,12 @@ if function_tool is not None:
     ) -> str:
         """Cross-check extracted evidence and return ResearchBatchResult JSON."""
 
+        _emit_tool_progress(
+            "cross_check_evidence_tool",
+            "running",
+            "Checking evidence across sources.",
+            execution_backend=execution_backend,
+        )
         sources = [Source.model_validate(source) for source in json.loads(sources_json)]
         evidence_items = [
             EvidenceItem.model_validate(item)
@@ -770,30 +886,57 @@ if function_tool is not None:
             backend=_validate_execution_backend(execution_backend),
             fallback_to_local=fallback_to_local,
         )
+        _emit_tool_progress(
+            "cross_check_evidence_tool",
+            "succeeded",
+            "Cross-check task completed.",
+            task_count=len(result.results),
+        )
         return result.model_dump_json()
 
     @function_tool
     def detect_invalid_leaps_tool(state_json: str) -> str:
         """Detect invalid inference leaps from a ResearchState JSON string."""
 
+        _emit_tool_progress("detect_invalid_leaps_tool", "running", "Looking for invalid inference leaps.")
         state = ResearchState.model_validate_json(state_json)
         leaps = detect_invalid_leaps(state)
+        _emit_tool_progress(
+            "detect_invalid_leaps_tool",
+            "succeeded",
+            f"Detected {len(leaps)} invalid leaps.",
+            invalid_leap_count=len(leaps),
+        )
         return _to_json([leap.model_dump() for leap in leaps])
 
     @function_tool
     def update_beliefs_tool(state_json: str) -> str:
         """Compute belief updates from a ResearchState JSON string."""
 
+        _emit_tool_progress("update_beliefs_tool", "running", "Updating the belief graph.")
         state = ResearchState.model_validate_json(state_json)
         updates = update_beliefs(state)
+        _emit_tool_progress(
+            "update_beliefs_tool",
+            "succeeded",
+            f"Applied {len(updates)} belief updates.",
+            belief_update_count=len(updates),
+        )
         return _to_json([update.model_dump() for update in updates])
 
     @function_tool
     def propose_decisive_tests_tool(state_json: str) -> str:
         """Propose decisive tests from a ResearchState JSON string."""
 
+        _emit_tool_progress("propose_decisive_tests_tool", "running", "Proposing decisive follow-up tests.")
         state = ResearchState.model_validate_json(state_json)
         tests = propose_decisive_tests(state)
+        _emit_tool_progress(
+            "propose_decisive_tests_tool",
+            "succeeded",
+            f"Proposed {len(tests)} decisive tests.",
+            decisive_test_count=len(tests),
+        )
         return _to_json([test.model_dump() for test in tests])
 
     @function_tool
@@ -807,6 +950,12 @@ if function_tool is not None:
     ) -> str:
         """Run decisive-test verifier tasks and return ResearchBatchResult JSON."""
 
+        _emit_tool_progress(
+            "run_decisive_test_verifiers_tool",
+            "running",
+            "Running verifier tasks.",
+            execution_backend=execution_backend,
+        )
         tests = [
             DecisiveTest.model_validate(test)
             for test in json.loads(decisive_tests_json)
@@ -831,25 +980,45 @@ if function_tool is not None:
             backend=_validate_execution_backend(execution_backend),
             fallback_to_local=fallback_to_local,
         )
+        _emit_tool_progress(
+            "run_decisive_test_verifiers_tool",
+            "succeeded",
+            f"Verifier batch completed with {len(result.results)} task results.",
+            task_count=len(result.results),
+        )
         return result.model_dump_json()
 
     @function_tool
     def generate_evals_from_failures_tool(invalid_leaps_json: str) -> str:
         """Generate eval artifacts from invalid leap JSON."""
 
+        _emit_tool_progress("generate_evals_from_failures_tool", "running", "Generating evals from failures.")
         invalid_leaps = [
             InvalidLeap.model_validate(invalid_leap)
             for invalid_leap in json.loads(invalid_leaps_json)
         ]
         evals = generate_evals_from_failures(invalid_leaps)
+        _emit_tool_progress(
+            "generate_evals_from_failures_tool",
+            "succeeded",
+            f"Generated {len(evals)} evals.",
+            generated_eval_count=len(evals),
+        )
         return _to_json([generated_eval.model_dump() for generated_eval in evals])
 
     @function_tool
     def build_eval_workshop_tool(state_json: str) -> str:
         """Build failure-to-eval workshop links and task-span artifacts."""
 
+        _emit_tool_progress("build_eval_workshop_tool", "running", "Building the Workshop connection graph.")
         state = ResearchState.model_validate_json(state_json)
         workshop = build_eval_workshop(state)
+        _emit_tool_progress(
+            "build_eval_workshop_tool",
+            "succeeded",
+            "Workshop connection graph ready.",
+            connection_count=len(workshop.connection_rows),
+        )
         return workshop.model_dump_json()
 
     @function_tool
@@ -859,10 +1028,23 @@ if function_tool is not None:
     ) -> str:
         """Record trace/workshop observability artifacts and return ObservabilityRecord JSON."""
 
+        _emit_tool_progress(
+            "record_observability_tool",
+            "running",
+            "Recording observability artifacts.",
+            observability_mode=observability_mode,
+        )
         state = ResearchState.model_validate_json(state_json)
         record = record_research_run(
             state,
             mode=_validate_observability_mode(observability_mode),
+        )
+        _emit_tool_progress(
+            "record_observability_tool",
+            "succeeded",
+            "Observability artifacts recorded.",
+            trace_id=record.trace_id,
+            backend=record.backend,
         )
         return record.model_dump_json()
 
@@ -881,6 +1063,13 @@ if function_tool is not None:
     ) -> str:
         """Run the deterministic Pragmatic loop and return ResearchState JSON."""
 
+        _emit_tool_progress(
+            "run_deterministic_research_loop_tool",
+            "running",
+            "Running the canonical research loop.",
+            source_mode=source_mode,
+            execution_backend=execution_backend,
+        )
         state = run_research_loop(
             thesis_text,
             max_iterations=max_iterations,
@@ -892,6 +1081,14 @@ if function_tool is not None:
             web_search_model=web_search_model or None,
             max_web_sources=max_web_sources,
             observability_mode=_validate_observability_mode(observability_mode),
+        )
+        _emit_tool_progress(
+            "run_deterministic_research_loop_tool",
+            "succeeded",
+            "Canonical research loop completed.",
+            assumption_count=len(state.assumptions),
+            evidence_count=len(state.evidence_items),
+            invalid_leap_count=len(state.invalid_leaps),
         )
         return state.model_dump_json()
 
@@ -906,6 +1103,7 @@ if function_tool is not None:
     ) -> str:
         """Run the failure-to-eval replay demo and return ReplayResult JSON."""
 
+        _emit_tool_progress("run_replay_demo_tool", "running", "Running failure-to-eval replay.")
         replay = run_replay_demo(
             thesis_text,
             max_iterations=max_iterations,
@@ -913,6 +1111,12 @@ if function_tool is not None:
             execution_backend=_validate_execution_backend(execution_backend) if execution_backend else None,
             extraction_mode=_validate_extraction_mode(extraction_mode),
             observability_mode=_validate_observability_mode(observability_mode),
+        )
+        _emit_tool_progress(
+            "run_replay_demo_tool",
+            "succeeded",
+            "Replay completed.",
+            comparison_count=len(replay.comparisons),
         )
         return replay.model_dump_json()
 

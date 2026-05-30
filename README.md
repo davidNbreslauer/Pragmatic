@@ -16,7 +16,7 @@ The OpenAI Agents SDK boundary is now represented in `src/pragmatic/agents.py`. 
 
 The minimal Streamlit UI is available in `app.py`. It runs the deterministic `ResearchManager` path and renders the resulting `ResearchState`.
 
-Run the app:
+Run the Streamlit app:
 
 ```bash
 PYTHONPATH=src streamlit run app.py
@@ -187,6 +187,14 @@ PYTHONPATH=src python -m pragmatic live-run-harness \
   --execution-backend modal \
   --observability local \
   --require-demo-proof
+```
+
+## Milestone 32
+
+The user-facing demo now has a realtime web app in `realtime_app.py`. It keeps the same live OpenAI Agents SDK, Modal, live web evidence, and local Raindrop Workshop execution path, but streams actual progress events to the browser with a live graph while the run is in flight.
+
+```bash
+PYTHONPATH=src python -m uvicorn realtime_app:app --host 0.0.0.0 --port 8501
 ```
 
 Run tests:

@@ -4,7 +4,6 @@ import json
 import os
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from pragmatic import (
     DEFAULT_THESIS,
@@ -55,17 +54,16 @@ OBSERVABILITY_LABELS = {
 
 
 def main() -> None:
-    st.title("Pragmatic")
+    render_app_chrome()
+    scenarios = demo_scenarios()
+    _initialize_demo_controls(scenarios)
 
     with st.sidebar:
-        st.header("Run")
-        scenarios = demo_scenarios()
-        _initialize_demo_controls(scenarios)
+        st.header("Demo Setup")
         scenario_ids = [scenario.id for scenario in scenarios]
         selected_scenario_id = st.selectbox(
             "Demo scenario",
             options=scenario_ids,
-            index=scenario_ids.index(st.session_state.demo_scenario_id),
             format_func=lambda scenario_id: next(
                 scenario.name for scenario in scenarios if scenario.id == scenario_id
             ),
@@ -76,77 +74,73 @@ def main() -> None:
             scenario for scenario in scenarios if scenario.id == selected_scenario_id
         )
         st.button("Apply Scenario", width="stretch", on_click=_apply_selected_demo_scenario)
-        thesis_text = st.text_area("Thesis", height=140, key="thesis_text")
-        max_iterations = st.slider("Iterations", min_value=1, max_value=3, key="max_iterations")
-        source_mode = st.selectbox(
-            "Evidence search",
-            options=SOURCE_OPTIONS,
-            index=SOURCE_OPTIONS.index(st.session_state.source_mode),
-            key="source_mode",
-            format_func=lambda option: SOURCE_LABELS[option],
-        )
-        allow_live_web_search = st.checkbox(
-            "Allow live web search",
-            key="allow_live_web_search",
-            disabled=source_mode != "web",
-        )
-        web_search_model = st.text_input("Web search model", key="web_search_model")
-        max_web_sources = st.slider(
-            "Max web sources",
-            min_value=1,
-            max_value=12,
-            key="max_web_sources",
-            disabled=source_mode != "web",
-        )
-        orchestration = st.selectbox(
-            "Orchestration",
-            options=ORCHESTRATION_OPTIONS,
-            index=ORCHESTRATION_OPTIONS.index(st.session_state.orchestration),
-            key="orchestration",
-        )
-        live_sdk_enabled = st.checkbox("Enable live SDK calls", key="live_sdk_enabled")
-        live_sdk_model = st.text_input("Live SDK model", key="live_sdk_model")
-        live_sdk_dry_run = st.checkbox("Dry-run live SDK", key="live_sdk_dry_run")
-        live_sdk_require_demo_proof = st.checkbox(
-            "Require demo proof",
-            key="live_sdk_require_demo_proof",
-        )
-        live_sdk_max_turns = st.slider(
-            "Live max turns",
-            min_value=1,
-            max_value=20,
-            key="live_sdk_max_turns",
-        )
-        live_sdk_timeout = st.number_input(
-            "Live timeout seconds",
-            min_value=5,
-            max_value=300,
-            step=5,
-            key="live_sdk_timeout",
-        )
-        execution_backend = st.selectbox(
-            "Execution",
-            options=EXECUTION_OPTIONS,
-            index=EXECUTION_OPTIONS.index(st.session_state.execution_backend),
-            key="execution_backend",
-        )
-        observability_mode = st.selectbox(
-            "Observability",
-            options=OBSERVABILITY_OPTIONS,
-            index=OBSERVABILITY_OPTIONS.index(st.session_state.observability_mode),
-            key="observability_mode",
-            format_func=lambda option: OBSERVABILITY_LABELS[option],
-        )
-        st.header("Integrations")
-        doctor_openai_live = st.checkbox("Doctor: live OpenAI API", key="doctor_openai_live")
-        doctor_modal_remote = st.checkbox("Doctor: remote Modal task", key="doctor_modal_remote")
-        doctor_clicked = st.button("Run Integration Doctor", width="stretch")
-        demo_smoke_clicked = st.button("Run Demo Smoke", width="stretch")
 
-        st.header("Replay")
-        replay_demo = st.checkbox("Replay demo", key="replay_demo")
-        run_clicked = st.button("Run Pragmatic", type="primary", width="stretch")
-        load_latest_live_clicked = st.button("Load Latest Live Run", width="stretch")
+        with st.expander("Research Settings", expanded=True):
+            max_iterations = st.slider("Iterations", min_value=1, max_value=3, key="max_iterations")
+            source_mode = st.selectbox(
+                "Evidence search",
+                options=SOURCE_OPTIONS,
+                key="source_mode",
+                format_func=lambda option: SOURCE_LABELS[option],
+            )
+            allow_live_web_search = st.checkbox(
+                "Allow live web search",
+                key="allow_live_web_search",
+                disabled=source_mode != "web",
+            )
+            web_search_model = st.text_input("Web search model", key="web_search_model")
+            max_web_sources = st.slider(
+                "Max web sources",
+                min_value=1,
+                max_value=12,
+                key="max_web_sources",
+                disabled=source_mode != "web",
+            )
+            orchestration = st.selectbox(
+                "Orchestration",
+                options=ORCHESTRATION_OPTIONS,
+                key="orchestration",
+            )
+            execution_backend = st.selectbox(
+                "Execution",
+                options=EXECUTION_OPTIONS,
+                key="execution_backend",
+            )
+            observability_mode = st.selectbox(
+                "Observability",
+                options=OBSERVABILITY_OPTIONS,
+                key="observability_mode",
+                format_func=lambda option: OBSERVABILITY_LABELS[option],
+            )
+            replay_demo = st.checkbox("Replay demo", key="replay_demo")
+
+        with st.expander("Live Controls", expanded=False):
+            live_sdk_enabled = st.checkbox("Enable live SDK calls", key="live_sdk_enabled")
+            live_sdk_model = st.text_input("Live SDK model", key="live_sdk_model")
+            live_sdk_dry_run = st.checkbox("Dry-run live SDK", key="live_sdk_dry_run")
+            live_sdk_require_demo_proof = st.checkbox(
+                "Require demo proof",
+                key="live_sdk_require_demo_proof",
+            )
+            live_sdk_max_turns = st.slider(
+                "Live max turns",
+                min_value=1,
+                max_value=20,
+                key="live_sdk_max_turns",
+            )
+            live_sdk_timeout = st.number_input(
+                "Live timeout seconds",
+                min_value=5,
+                max_value=300,
+                step=5,
+                key="live_sdk_timeout",
+            )
+
+        with st.expander("Readiness", expanded=False):
+            doctor_openai_live = st.checkbox("Doctor: live OpenAI API", key="doctor_openai_live")
+            doctor_modal_remote = st.checkbox("Doctor: remote Modal task", key="doctor_modal_remote")
+            doctor_clicked = st.button("Run Integration Doctor", width="stretch")
+            demo_smoke_clicked = st.button("Run Demo Smoke", width="stretch")
 
         st.header("History")
         saved_runs = list_runs()
@@ -201,29 +195,40 @@ def main() -> None:
             disabled=not selected_eval_snapshot_id,
         )
 
+    run_clicked, load_latest_live_clicked = render_question_panel(selected_scenario)
+    thesis_text = st.session_state.thesis_text
+
     if load_latest_live_clicked:
         if not _load_latest_live_run_into_session():
             st.warning("No live run artifact with a ResearchState was found.")
 
     if run_clicked:
-        if replay_demo:
-            replay = run_replay_demo(
-                thesis_text,
-                max_iterations=max_iterations,
-                execution_backend=execution_backend,
-                observability_mode=observability_mode,
-            )
-            st.session_state.replay_result_json = replay.model_dump_json()
-            st.session_state.research_state_json = replay.replay_pass.model_dump_json()
-            st.session_state.current_run_source = f"Replay demo: {selected_scenario.name}"
-            st.session_state.pop("live_run_result_json", None)
-        else:
-            manager = ResearchManager(model=live_sdk_model or None)
-            if orchestration == "live_sdk":
-                if live_sdk_enabled and not os.getenv("OPENAI_API_KEY"):
-                    st.warning("Live SDK mode requires OPENAI_API_KEY.")
-                mode = "dry_run" if live_sdk_dry_run else "live"
-                with st.spinner("Checking live OpenAI Agents SDK harness..."):
+        with st.status(_run_status_label(orchestration, source_mode, execution_backend), expanded=True) as run_status:
+            if replay_demo:
+                run_status.write("Replaying the failure-to-eval correction.")
+                replay = run_replay_demo(
+                    thesis_text,
+                    max_iterations=max_iterations,
+                    execution_backend=execution_backend,
+                    observability_mode=observability_mode,
+                )
+                st.session_state.replay_result_json = replay.model_dump_json()
+                st.session_state.research_state_json = replay.replay_pass.model_dump_json()
+                st.session_state.current_run_source = f"Replay demo: {selected_scenario.name}"
+                st.session_state.pop("live_run_result_json", None)
+                run_status.update(label="Replay graph ready.", state="complete")
+            else:
+                manager = ResearchManager(model=live_sdk_model or None)
+                if orchestration == "live_sdk":
+                    if live_sdk_enabled and not os.getenv("OPENAI_API_KEY"):
+                        st.warning("Live SDK mode requires OPENAI_API_KEY.")
+                    mode = "dry_run" if live_sdk_dry_run else "live"
+                    if mode == "live":
+                        run_status.write(
+                            f"Running the full live Agents SDK path. Timeout: {float(live_sdk_timeout):g}s."
+                        )
+                    else:
+                        run_status.write("Checking live SDK guardrails without spending a live call.")
                     live_result = run_live_harness_sync(
                         thesis_text,
                         model=live_sdk_model or None,
@@ -240,55 +245,63 @@ def main() -> None:
                         observability_mode=observability_mode,
                         require_demo_proof=live_sdk_require_demo_proof,
                     )
-                st.session_state.live_run_result_json = live_result.model_dump_json()
-                if live_result.state is not None:
-                    state = live_result.state
+                    st.session_state.live_run_result_json = live_result.model_dump_json()
+                    if live_result.state is not None:
+                        state = live_result.state
+                    else:
+                        if live_result.status in {"blocked", "failed", "timed_out"}:
+                            st.error(live_result.message)
+                            run_status.write("Falling back to a deterministic graph so the UI remains inspectable.")
+                        fallback_source_mode = "prepared" if live_result.mode == "dry_run" else source_mode
+                        state = manager.run_deterministic(
+                            thesis_text,
+                            max_iterations=max_iterations,
+                            execution_backend=execution_backend,
+                            source_mode=fallback_source_mode,
+                            allow_live_web_search=(
+                                allow_live_web_search and fallback_source_mode == "web"
+                            ),
+                            web_search_model=web_search_model or live_sdk_model or None,
+                            max_web_sources=max_web_sources,
+                            observability_mode="off",
+                        )
+                    st.session_state.current_run_source = _live_run_source_label(live_result)
+                elif orchestration == "scripted_sdk":
+                    run_status.write("Planning assumptions and searching evidence sources.")
+                    if source_mode == "web" and allow_live_web_search:
+                        run_status.write("Using live web source acquisition before extraction.")
+                    if execution_backend == "modal":
+                        run_status.write("Sending typed research tasks through the Modal execution layer.")
+                    state = manager.run_sdk_orchestrated(
+                        thesis_text,
+                        max_iterations=max_iterations,
+                        execution_backend=execution_backend,
+                        source_mode=source_mode,
+                        allow_live_web_search=allow_live_web_search,
+                        web_search_model=web_search_model or live_sdk_model or None,
+                        max_web_sources=max_web_sources,
+                        observability_mode=observability_mode,
+                    )
+                    st.session_state.current_run_source = f"Fast evidence run: {selected_scenario.name}"
+                    st.session_state.pop("replay_result_json", None)
+                    st.session_state.pop("live_run_result_json", None)
                 else:
-                    if live_result.status in {"blocked", "failed", "timed_out"}:
-                        st.error(live_result.message)
-                    fallback_source_mode = "prepared" if live_result.mode == "dry_run" else source_mode
+                    run_status.write("Running the deterministic research loop.")
                     state = manager.run_deterministic(
                         thesis_text,
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
-                        source_mode=fallback_source_mode,
-                        allow_live_web_search=(
-                            allow_live_web_search and fallback_source_mode == "web"
-                        ),
-                        web_search_model=web_search_model or live_sdk_model or None,
+                        source_mode=source_mode,
+                        allow_live_web_search=allow_live_web_search,
+                        web_search_model=web_search_model or None,
                         max_web_sources=max_web_sources,
-                        observability_mode="off",
+                        observability_mode=observability_mode,
                     )
-                st.session_state.current_run_source = _live_run_source_label(live_result)
-            elif orchestration == "scripted_sdk":
-                state = manager.run_sdk_orchestrated(
-                    thesis_text,
-                    max_iterations=max_iterations,
-                    execution_backend=execution_backend,
-                    source_mode=source_mode,
-                    allow_live_web_search=allow_live_web_search,
-                    web_search_model=web_search_model or live_sdk_model or None,
-                    max_web_sources=max_web_sources,
-                    observability_mode=observability_mode,
-                )
-                st.session_state.current_run_source = f"Scripted SDK run: {selected_scenario.name}"
-                st.session_state.pop("replay_result_json", None)
-                st.session_state.pop("live_run_result_json", None)
-            else:
-                state = manager.run_deterministic(
-                    thesis_text,
-                    max_iterations=max_iterations,
-                    execution_backend=execution_backend,
-                    source_mode=source_mode,
-                    allow_live_web_search=allow_live_web_search,
-                    web_search_model=web_search_model or None,
-                    max_web_sources=max_web_sources,
-                    observability_mode=observability_mode,
-                )
-                st.session_state.current_run_source = f"Deterministic run: {selected_scenario.name}"
-                st.session_state.pop("replay_result_json", None)
-                st.session_state.pop("live_run_result_json", None)
-            st.session_state.research_state_json = state.model_dump_json()
+                    st.session_state.current_run_source = f"Deterministic run: {selected_scenario.name}"
+                    st.session_state.pop("replay_result_json", None)
+                    st.session_state.pop("live_run_result_json", None)
+                st.session_state.research_state_json = state.model_dump_json()
+                run_status.update(label="Research graph ready.", state="complete")
         st.session_state.pop("run_comparison_json", None)
         st.session_state.pop("eval_suite_result_json", None)
         st.session_state.pop("eval_snapshot_comparison_json", None)
@@ -370,57 +383,117 @@ def main() -> None:
         )
         st.session_state.run_comparison_json = comparison.model_dump_json()
 
-    render_summary(state)
-    render_answer_summary(state)
-    render_demo_cockpit(state, selected_scenario)
     render_orchestration_flow(state, selected_scenario)
-    if "integration_doctor_json" in st.session_state:
-        doctor_result = IntegrationDoctorResult.model_validate_json(
-            st.session_state.integration_doctor_json
+    render_answer_summary(state)
+    render_inspection_tabs(state, selected_scenario)
+
+
+def render_app_chrome() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 2.25rem;
+            padding-bottom: 4rem;
+            max-width: 1180px;
+        }
+        div[data-testid="stMetric"] {
+            border: 1px solid rgba(52, 64, 84, 0.12);
+            border-radius: 8px;
+            padding: 0.75rem 0.85rem;
+            background: #fbfbf9;
+        }
+        .pragmatic-eyebrow {
+            color: #52606d;
+            font-size: 0.78rem;
+            font-weight: 720;
+            letter-spacing: 0;
+            text-transform: uppercase;
+            margin-bottom: 0.2rem;
+        }
+        .pragmatic-question-copy {
+            color: #4b5563;
+            max-width: 780px;
+            margin-bottom: 1rem;
+        }
+        .pragmatic-status-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.4rem;
+        }
+        .pragmatic-chip {
+            border: 1px solid rgba(52, 64, 84, 0.16);
+            border-radius: 7px;
+            padding: 0.35rem 0.55rem;
+            background: #ffffff;
+            color: #344054;
+            font-size: 0.82rem;
+        }
+        .answer-callout {
+            border: 1px solid rgba(52, 64, 84, 0.14);
+            border-radius: 8px;
+            padding: 1rem;
+            background: #fbfbf9;
+        }
+        .answer-kicker {
+            color: #52606d;
+            font-size: 0.78rem;
+            font-weight: 720;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+        .answer-headline {
+            margin-top: 0.15rem;
+            font-size: 1.35rem;
+            line-height: 1.25;
+            font-weight: 760;
+            color: #101828;
+        }
+        .answer-body {
+            color: #344054;
+            margin-top: 0.55rem;
+            line-height: 1.48;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_question_panel(scenario: DemoScenario) -> tuple[bool, bool]:
+    st.markdown('<div class="pragmatic-eyebrow">Pragmatic</div>', unsafe_allow_html=True)
+    st.title("Ask a technical question.")
+    st.markdown(
+        '<div class="pragmatic-question-copy">'
+        "The demo flow is question, live research graph, then an evidence-backed answer."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        st.text_area(
+            "Question",
+            height=96,
+            key="thesis_text",
+            placeholder="Can spider silk make a bullet proof vest?",
         )
-        render_integration_doctor(doctor_result)
-    if "live_run_result_json" in st.session_state:
-        live_result = LiveRunResult.model_validate_json(st.session_state.live_run_result_json)
-        render_live_harness(live_result)
-    if "demo_smoke_json" in st.session_state:
-        demo_smoke = DemoSmokeResult.model_validate_json(st.session_state.demo_smoke_json)
-        render_demo_smoke(demo_smoke)
-    render_agent_run(state)
-    render_research_tasks(state)
-    render_sources(state)
-    render_eval_workshop(state)
-    if "replay_result_json" in st.session_state:
-        replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
-        render_replay(replay)
-    render_invalid_leaps(state)
-    render_observability(state)
-    render_history_controls(state)
-    if "run_comparison_json" in st.session_state:
-        comparison = RunComparison.model_validate_json(st.session_state.run_comparison_json)
-        render_run_comparison(comparison)
-    if "eval_suite_result_json" in st.session_state:
-        eval_suite = RegressionEvalSuiteResult.model_validate_json(
-            st.session_state.eval_suite_result_json
+        col1, col2, col3 = st.columns([1.05, 1.05, 3.1], vertical_alignment="center")
+        run_clicked = col1.button("Ask Pragmatic", type="primary", width="stretch")
+        load_latest_live_clicked = col2.button("Load Latest", width="stretch")
+        col3.markdown(
+            "<div class=\"pragmatic-status-row\">"
+            f"<span class=\"pragmatic-chip\">{scenario.name}</span>"
+            f"<span class=\"pragmatic-chip\">{st.session_state.orchestration}</span>"
+            f"<span class=\"pragmatic-chip\">{st.session_state.execution_backend}</span>"
+            f"<span class=\"pragmatic-chip\">{OBSERVABILITY_LABELS[st.session_state.observability_mode]}</span>"
+            "</div>",
+            unsafe_allow_html=True,
         )
-        render_eval_suite_result(eval_suite)
-    if "eval_snapshot_comparison_json" in st.session_state:
-        eval_comparison = EvalSnapshotComparison.model_validate_json(
-            st.session_state.eval_snapshot_comparison_json
-        )
-        render_eval_snapshot_comparison(eval_comparison)
-    render_retrieval_scores(state)
-    render_assumptions(state)
-    render_evidence_conflicts(state)
-    render_evidence(state)
-    render_belief_updates(state)
-    render_decisive_tests(state)
-    render_verifier_results(state)
-    render_generated_evals(state)
-    render_trace(state)
+    return run_clicked, load_latest_live_clicked
 
 
 def render_summary(state: ResearchState) -> None:
-    st.caption(state.thesis.text)
+    st.caption(f"Current question: {state.thesis.text}")
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Assumptions", len(state.assumptions))
     col2.metric("Evidence Items", len(state.evidence_items))
@@ -447,24 +520,73 @@ def render_answer_summary(state: ResearchState) -> None:
         if assumption.support_level in {"unknown", "unsupported", "contradicted", "weak"}
     ]
     if state.invalid_leaps or limiting_count or len(confident_assumptions) < len(state.assumptions):
-        headline = "Provisional answer: not enough evidence for a confident yes."
-    elif direct_count:
-        headline = "Provisional answer: the evidence supports the thesis, with stated limits."
-    else:
-        headline = "Provisional answer: evidence is present, but it is mostly indirect."
-
-    st.markdown(f"**{headline}**")
-    st.caption(
-        (
-            f"{direct_count} direct items, {limiting_count} limiting items, "
-            f"{len(state.invalid_leaps)} invalid inference leaps, "
-            f"{len(unresolved_assumptions)} unresolved assumptions."
+        verdict = "Not proven yet"
+        headline = "The run found evidence, but not enough for a confident yes."
+        answer_body = (
+            "Pragmatic is holding the answer back because at least one assumption is still "
+            "weak, contradicted, or being supported by indirect evidence. The useful result is "
+            "the boundary: what the evidence shows, what it does not show, and which inference "
+            "would be unsafe."
         )
+    elif direct_count:
+        verdict = "Supported with limits"
+        headline = "The evidence supports the claim, with stated limits."
+        answer_body = (
+            "The strongest assumptions have direct support and the run did not find an invalid "
+            "inference leap that blocks the answer. The answer should still preserve the stated "
+            "limits and decisive follow-up tests."
+        )
+    else:
+        verdict = "Promising but indirect"
+        headline = "The evidence is relevant, but mostly indirect."
+        answer_body = (
+            "The run found adjacent evidence, but it does not yet directly settle the user-facing "
+            "claim. Pragmatic treats that as useful context rather than proof."
+        )
+
+    st.markdown(
+        "<div class=\"answer-callout\">"
+        "<div class=\"answer-kicker\">Best current answer</div>"
+        f"<div class=\"answer-headline\">{headline}</div>"
+        f"<div class=\"answer-body\">{answer_body}</div>"
+        "</div>",
+        unsafe_allow_html=True,
     )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Verdict", verdict)
+    col2.metric("Belief confidence", f"{_mean_assumption_confidence(state):.2f}")
+    col3.metric("Direct evidence", direct_count)
+    col4.metric("Open issues", len(unresolved_assumptions) + len(state.invalid_leaps))
+
     if state.invalid_leaps:
-        st.write(state.invalid_leaps[0].why_invalid)
+        first_leap = state.invalid_leaps[0]
+        st.warning(f"{first_leap.leap}: {first_leap.why_invalid}")
     elif unresolved_assumptions:
-        st.write(unresolved_assumptions[0].latest_update or unresolved_assumptions[0].why_it_matters)
+        first_gap = unresolved_assumptions[0]
+        st.info(first_gap.latest_update or first_gap.why_it_matters)
+
+    evidence_rows = _top_evidence_rows(state)
+    gap_rows = _top_gap_rows(state, unresolved_assumptions)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Best evidence**")
+        if evidence_rows:
+            st.dataframe(evidence_rows, width="stretch", hide_index=True)
+        else:
+            st.info("No evidence items found yet.")
+    with col2:
+        st.markdown("**Limits and next checks**")
+        if gap_rows:
+            st.dataframe(gap_rows, width="stretch", hide_index=True)
+        else:
+            st.success("No major limits surfaced in this run.")
+
+    if state.decisive_tests:
+        decisive = state.decisive_tests[0]
+        st.markdown("**Most useful next test**")
+        st.write(decisive.test)
+        st.caption(decisive.why_decisive)
 
 
 def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
@@ -497,13 +619,75 @@ def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
 
 
 def render_orchestration_flow(state: ResearchState, scenario: DemoScenario) -> None:
+    st.subheader("Thinking Graph")
     source = st.session_state.get("current_run_source", "Current session")
     snapshot = build_orchestration_flow_snapshot(
         state,
         scenario_name=scenario.name,
         current_run_source=source,
     )
-    components.html(render_orchestration_flow_html(snapshot), height=720, scrolling=False)
+    st.iframe(render_orchestration_flow_html(snapshot), height=720, width="stretch")
+
+
+def render_inspection_tabs(state: ResearchState, scenario: DemoScenario) -> None:
+    evidence_tab, proof_tab, trace_tab, data_tab = st.tabs(
+        ["Inspect Evidence", "Demo Proof", "Agent Trace", "Detailed Data"]
+    )
+
+    with evidence_tab:
+        render_invalid_leaps(state)
+        render_sources(state)
+        render_evidence(state)
+        render_evidence_conflicts(state)
+        render_decisive_tests(state)
+
+    with proof_tab:
+        render_demo_cockpit(state, scenario)
+        if "integration_doctor_json" in st.session_state:
+            doctor_result = IntegrationDoctorResult.model_validate_json(
+                st.session_state.integration_doctor_json
+            )
+            render_integration_doctor(doctor_result)
+        if "live_run_result_json" in st.session_state:
+            live_result = LiveRunResult.model_validate_json(
+                st.session_state.live_run_result_json
+            )
+            render_live_harness(live_result)
+        if "demo_smoke_json" in st.session_state:
+            demo_smoke = DemoSmokeResult.model_validate_json(st.session_state.demo_smoke_json)
+            render_demo_smoke(demo_smoke)
+        render_eval_workshop(state)
+        if "replay_result_json" in st.session_state:
+            replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
+            render_replay(replay)
+        render_observability(state)
+
+    with trace_tab:
+        render_agent_run(state)
+        render_research_tasks(state)
+        render_trace(state)
+
+    with data_tab:
+        render_summary(state)
+        render_history_controls(state)
+        if "run_comparison_json" in st.session_state:
+            comparison = RunComparison.model_validate_json(st.session_state.run_comparison_json)
+            render_run_comparison(comparison)
+        if "eval_suite_result_json" in st.session_state:
+            eval_suite = RegressionEvalSuiteResult.model_validate_json(
+                st.session_state.eval_suite_result_json
+            )
+            render_eval_suite_result(eval_suite)
+        if "eval_snapshot_comparison_json" in st.session_state:
+            eval_comparison = EvalSnapshotComparison.model_validate_json(
+                st.session_state.eval_snapshot_comparison_json
+            )
+            render_eval_snapshot_comparison(eval_comparison)
+        render_retrieval_scores(state)
+        render_assumptions(state)
+        render_belief_updates(state)
+        render_verifier_results(state)
+        render_generated_evals(state)
 
 
 def render_integration_doctor(result: IntegrationDoctorResult) -> None:
@@ -1159,6 +1343,75 @@ def render_trace(state: ResearchState) -> None:
         st.code(json.dumps(state.model_dump(), indent=2), language="json")
 
 
+def _mean_assumption_confidence(state: ResearchState) -> float:
+    if not state.assumptions:
+        return 0.0
+    return sum(assumption.confidence for assumption in state.assumptions) / len(state.assumptions)
+
+
+def _top_evidence_rows(state: ResearchState) -> list[dict[str, str | float]]:
+    source_titles = {source.id: source.title for source in state.sources}
+    type_rank = {
+        "direct": 0,
+        "contradictory": 1,
+        "indirect": 2,
+        "proxy": 3,
+        "anecdotal": 4,
+        "irrelevant": 5,
+    }
+    sorted_items = sorted(
+        state.evidence_items,
+        key=lambda item: (type_rank.get(item.evidence_type, 9), -item.confidence),
+    )
+    return [
+        {
+            "Type": item.evidence_type,
+            "Confidence": round(item.confidence, 2),
+            "Source": source_titles.get(item.source_id, item.source_id),
+            "Claim": item.claim_supported,
+        }
+        for item in sorted_items[:5]
+    ]
+
+
+def _top_gap_rows(state: ResearchState, unresolved_assumptions: list) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for leap in state.invalid_leaps[:3]:
+        rows.append(
+            {
+                "Kind": "Invalid leap",
+                "What matters": leap.leap,
+                "Next check": leap.suggested_followup_question,
+            }
+        )
+    for conflict in state.evidence_conflicts[:2]:
+        rows.append(
+            {
+                "Kind": "Conflict",
+                "What matters": conflict.summary,
+                "Next check": conflict.suggested_action,
+            }
+        )
+    for assumption in unresolved_assumptions[: max(0, 5 - len(rows))]:
+        rows.append(
+            {
+                "Kind": assumption.support_level,
+                "What matters": assumption.text,
+                "Next check": assumption.latest_update or assumption.why_it_matters,
+            }
+        )
+    if not rows and state.decisive_tests:
+        decisive = state.decisive_tests[0]
+        rows.append(
+            {
+                "Kind": "Decisive test",
+                "What matters": decisive.test,
+                "Next check": decisive.why_decisive,
+            }
+        )
+    return rows
+
+
 def _assumption_by_id(state: ResearchState, assumption_id: str):
     for assumption in state.assumptions:
         if assumption.id == assumption_id:
@@ -1324,6 +1577,20 @@ def _load_latest_live_run_into_session() -> bool:
     st.session_state.pop("replay_result_json", None)
     st.session_state.pop("run_comparison_json", None)
     return True
+
+
+def _run_status_label(
+    orchestration: str,
+    source_mode: str,
+    execution_backend: str,
+) -> str:
+    if orchestration == "live_sdk":
+        return "Running live OpenAI Agents SDK orchestration..."
+    if source_mode == "web":
+        return "Searching live evidence and building the graph..."
+    if execution_backend == "modal":
+        return "Running Modal-backed research fan-out..."
+    return "Building the research graph..."
 
 
 def _live_run_source_label(

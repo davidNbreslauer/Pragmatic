@@ -89,6 +89,8 @@ IntegrationCheckStatus = Literal[
     "skipped",
 ]
 IntegrationDoctorStatus = Literal["ready", "degraded", "failed"]
+DemoOrchestration = Literal["deterministic", "scripted_sdk", "live_sdk"]
+DemoSmokeStatus = Literal["pass", "fail"]
 
 
 class Thesis(BaseModel):
@@ -274,6 +276,34 @@ class IntegrationCheck(BaseModel):
 class IntegrationDoctorResult(BaseModel):
     status: IntegrationDoctorStatus
     checks: list[IntegrationCheck]
+    summary: str
+
+
+class DemoScenario(BaseModel):
+    id: str
+    name: str
+    thesis: str
+    orchestration: DemoOrchestration
+    execution_backend: ExecutionBackend
+    observability_backend: ObservabilityBackend
+    replay_demo: bool = False
+    live_dry_run: bool = True
+    require_demo_proof: bool = False
+    proves: list[str] = Field(default_factory=list)
+    notes: str
+
+
+class DemoSmokeCheck(BaseModel):
+    name: str
+    status: DemoSmokeStatus
+    message: str
+    artifact_path: str | None = None
+
+
+class DemoSmokeResult(BaseModel):
+    status: DemoSmokeStatus
+    checks: list[DemoSmokeCheck] = Field(default_factory=list)
+    output_dir: str
     summary: str
 
 

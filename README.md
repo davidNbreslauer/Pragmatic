@@ -149,6 +149,30 @@ The live SDK harness now produces a demo-readiness proof. Successful live runs i
 PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --execution-backend modal --observability local --require-demo-proof
 ```
 
+## Milestone 27
+
+The Streamlit app now opens as a hackathon cockpit. Curated demo scenarios set the thesis, orchestration mode, execution backend, observability backend, replay toggle, and live proof defaults. The first visible panels prioritize the Demo Cockpit, integration status, live proof, agent orchestration, research execution tasks, Eval Workshop, replay, invalid leaps, and observability before lower-level tables.
+
+## Milestone 28
+
+The repo now includes a curated scenario pack in `src/thesisgraph/demo.py`: Core Evidence Loop, Modal Fan-Out, Failure To Eval Replay, and Live SDK Guarded. The same scenarios are exposed through the app and the CLI.
+
+```bash
+PYTHONPATH=src python -m thesisgraph demo-scenarios
+```
+
+## Milestone 29
+
+Demo reliability now has a one-command smoke harness. It runs the integration doctor, core loop, replay demo, and regression gates, then writes replayable artifacts under `.thesisgraph/demo`.
+
+```bash
+PYTHONPATH=src python -m thesisgraph demo-smoke --fail-on-fail
+```
+
+## Milestone 30
+
+The hackathon demo script is tracked in `docs/hackathon_demo_script.md`, including setup commands, a three-minute run order, and backup artifact paths for live-service failures.
+
 Run tests:
 
 ```bash

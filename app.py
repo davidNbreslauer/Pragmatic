@@ -7,6 +7,8 @@ import streamlit as st
 
 from thesisgraph import (
     DEFAULT_THESIS,
+    DemoScenario,
+    DemoSmokeResult,
     EvalSnapshotComparison,
     IntegrationDoctorResult,
     LiveRunResult,
@@ -14,8 +16,10 @@ from thesisgraph import (
     ResearchManager,
     ResearchState,
     compare_eval_snapshot_by_id,
+    demo_scenarios,
     list_eval_snapshots,
     run_live_harness_sync,
+    run_demo_smoke,
     run_eval_suite,
     run_integration_doctor,
     save_eval_snapshot,
@@ -33,17 +37,34 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Run")
-        thesis_text = st.text_area("Thesis", value=DEFAULT_THESIS, height=140)
+        scenarios = demo_scenarios()
+        scenario_ids = [scenario.id for scenario in scenarios]
+        selected_scenario_id = st.selectbox(
+            "Demo scenario",
+            options=scenario_ids,
+            format_func=lambda scenario_id: next(
+                scenario.name for scenario in scenarios if scenario.id == scenario_id
+            ),
+        )
+        selected_scenario = next(
+            scenario for scenario in scenarios if scenario.id == selected_scenario_id
+        )
+        thesis_text = st.text_area("Thesis", value=selected_scenario.thesis, height=140)
         max_iterations = st.slider("Iterations", min_value=1, max_value=3, value=1)
         orchestration = st.selectbox(
             "Orchestration",
             options=["deterministic", "scripted_sdk", "live_sdk"],
-            index=0,
+            index=["deterministic", "scripted_sdk", "live_sdk"].index(
+                selected_scenario.orchestration
+            ),
         )
         live_sdk_enabled = st.checkbox("Enable live SDK calls", value=False)
         live_sdk_model = st.text_input("Live SDK model", value="")
-        live_sdk_dry_run = st.checkbox("Dry-run live SDK", value=True)
-        live_sdk_require_demo_proof = st.checkbox("Require demo proof", value=False)
+        live_sdk_dry_run = st.checkbox("Dry-run live SDK", value=selected_scenario.live_dry_run)
+        live_sdk_require_demo_proof = st.checkbox(
+            "Require demo proof",
+            value=selected_scenario.require_demo_proof,
+        )
         live_sdk_max_turns = st.slider("Live max turns", min_value=1, max_value=10, value=4)
         live_sdk_timeout = st.number_input(
             "Live timeout seconds",
@@ -52,19 +73,24 @@ def main() -> None:
             value=60,
             step=5,
         )
-        execution_backend = st.selectbox("Execution", options=["local", "modal"], index=0)
+        execution_backend = st.selectbox(
+            "Execution",
+            options=["local", "modal"],
+            index=["local", "modal"].index(selected_scenario.execution_backend),
+        )
         observability_mode = st.selectbox(
             "Observability",
             options=["local", "raindrop", "off"],
-            index=0,
+            index=["local", "raindrop", "off"].index(selected_scenario.observability_backend),
         )
         st.header("Integrations")
         doctor_openai_live = st.checkbox("Doctor: live OpenAI API", value=False)
         doctor_modal_remote = st.checkbox("Doctor: remote Modal task", value=False)
         doctor_clicked = st.button("Run Integration Doctor", width="stretch")
+        demo_smoke_clicked = st.button("Run Demo Smoke", width="stretch")
 
         st.header("Replay")
-        replay_demo = st.checkbox("Replay demo", value=False)
+        replay_demo = st.checkbox("Replay demo", value=selected_scenario.replay_demo)
         run_clicked = st.button("Run ThesisGraph", type="primary", width="stretch")
 
         st.header("History")
@@ -211,6 +237,14 @@ def main() -> None:
             )
         st.session_state.integration_doctor_json = doctor_result.model_dump_json()
 
+    if demo_smoke_clicked:
+        with st.spinner("Running demo readiness smoke checks..."):
+            demo_smoke = run_demo_smoke(
+                run_openai_live=doctor_openai_live,
+                run_modal_remote=doctor_modal_remote,
+            )
+        st.session_state.demo_smoke_json = demo_smoke.model_dump_json()
+
     if save_eval_snapshot_clicked:
         with st.spinner("Saving known-good eval snapshot..."):
             summary = save_eval_snapshot(
@@ -243,14 +277,27 @@ def main() -> None:
         st.session_state.run_comparison_json = comparison.model_dump_json()
 
     render_summary(state)
+    render_demo_cockpit(state, selected_scenario)
     if "integration_doctor_json" in st.session_state:
         doctor_result = IntegrationDoctorResult.model_validate_json(
             st.session_state.integration_doctor_json
         )
         render_integration_doctor(doctor_result)
-    render_history_controls(state)
-    render_retrieval_scores(state)
+    if "live_run_result_json" in st.session_state:
+        live_result = LiveRunResult.model_validate_json(st.session_state.live_run_result_json)
+        render_live_harness(live_result)
+    if "demo_smoke_json" in st.session_state:
+        demo_smoke = DemoSmokeResult.model_validate_json(st.session_state.demo_smoke_json)
+        render_demo_smoke(demo_smoke)
+    render_agent_run(state)
     render_research_tasks(state)
+    render_eval_workshop(state)
+    if "replay_result_json" in st.session_state:
+        replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
+        render_replay(replay)
+    render_invalid_leaps(state)
+    render_observability(state)
+    render_history_controls(state)
     if "run_comparison_json" in st.session_state:
         comparison = RunComparison.model_validate_json(st.session_state.run_comparison_json)
         render_run_comparison(comparison)
@@ -264,23 +311,14 @@ def main() -> None:
             st.session_state.eval_snapshot_comparison_json
         )
         render_eval_snapshot_comparison(eval_comparison)
-    if "replay_result_json" in st.session_state:
-        replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
-        render_replay(replay)
-    if "live_run_result_json" in st.session_state:
-        live_result = LiveRunResult.model_validate_json(st.session_state.live_run_result_json)
-        render_live_harness(live_result)
-    render_agent_run(state)
-    render_eval_workshop(state)
+    render_retrieval_scores(state)
     render_assumptions(state)
     render_evidence_conflicts(state)
-    render_invalid_leaps(state)
     render_evidence(state)
     render_belief_updates(state)
     render_decisive_tests(state)
     render_verifier_results(state)
     render_generated_evals(state)
-    render_observability(state)
     render_trace(state)
 
 
@@ -293,6 +331,34 @@ def render_summary(state: ResearchState) -> None:
     col4.metric("Invalid Leaps", len(state.invalid_leaps))
     col5.metric("Verifier Results", len(state.verifier_results))
     col6.metric("Generated Evals", len(state.generated_evals))
+
+
+def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
+    st.subheader("Demo Cockpit")
+    st.caption(scenario.name)
+    modal_tasks = [result for result in state.research_task_results if result.backend == "modal"]
+    workshop_artifacts = (
+        len(state.observability.workshop_artifact_ids)
+        if state.observability is not None
+        else 0
+    )
+    replay_outcomes = (
+        len(state.eval_workshop.replay_outcomes)
+        if state.eval_workshop is not None
+        else 0
+    )
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Orchestration", state.agent_run.mode if state.agent_run else "deterministic")
+    col2.metric("Modal tasks", len(modal_tasks))
+    col3.metric("Workshop artifacts", workshop_artifacts)
+    col4.metric("Failure evals", len(state.generated_evals))
+    col5.metric("Replay outcomes", replay_outcomes)
+    if scenario.proves:
+        st.dataframe(
+            [{"Proof point": item} for item in scenario.proves],
+            width="stretch",
+            hide_index=True,
+        )
 
 
 def render_integration_doctor(result: IntegrationDoctorResult) -> None:
@@ -318,6 +384,28 @@ def render_integration_doctor(result: IntegrationDoctorResult) -> None:
     )
     with st.expander("Integration metadata"):
         st.code(result.model_dump_json(indent=2), language="json")
+
+
+def render_demo_smoke(result: DemoSmokeResult) -> None:
+    st.subheader("Demo Smoke")
+    st.caption(result.summary)
+    col1, col2 = st.columns(2)
+    col1.metric("Status", result.status)
+    col2.metric("Checks", len(result.checks))
+    st.caption(f"Artifacts: {result.output_dir}")
+    st.dataframe(
+        [
+            {
+                "Check": check.name,
+                "Status": check.status,
+                "Message": check.message,
+                "Artifact": check.artifact_path or "",
+            }
+            for check in result.checks
+        ],
+        width="stretch",
+        hide_index=True,
+    )
 
 
 def render_history_controls(state: ResearchState) -> None:

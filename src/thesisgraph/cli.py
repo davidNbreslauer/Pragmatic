@@ -12,6 +12,7 @@ from thesisgraph.agents import (
     ResearchManager,
 )
 from thesisgraph.doctor import run_integration_doctor
+from thesisgraph.demo import demo_scenarios, run_demo_smoke
 from thesisgraph.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot_by_id,
@@ -127,6 +128,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--fail-on-degraded",
         action="store_true",
         help="Exit non-zero when any integration is unavailable, skipped, or failed.",
+    )
+
+    scenarios_parser = subparsers.add_parser(
+        "demo-scenarios",
+        help="List curated hackathon demo scenarios.",
+    )
+    scenarios_parser.add_argument("--output")
+
+    smoke_parser = subparsers.add_parser(
+        "demo-smoke",
+        help="Run the demo readiness harness and write replayable artifacts.",
+    )
+    smoke_parser.add_argument("--output-dir")
+    smoke_parser.add_argument("--run-openai-live", action="store_true")
+    smoke_parser.add_argument("--run-modal-remote", action="store_true")
+    smoke_parser.add_argument(
+        "--fail-on-fail",
+        action="store_true",
+        help="Exit non-zero if any demo smoke check fails.",
     )
 
     snapshot_parser = subparsers.add_parser(
@@ -287,6 +307,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.fail_on_degraded and result.status == "degraded":
             return 1
         return 0
+
+    if args.command == "demo-scenarios":
+        payload = json.dumps([scenario.model_dump() for scenario in demo_scenarios()], indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        return 0
+
+    if args.command == "demo-smoke":
+        result = run_demo_smoke(
+            output_dir=args.output_dir,
+            run_openai_live=args.run_openai_live,
+            run_modal_remote=args.run_modal_remote,
+        )
+        print(result.model_dump_json(indent=2))
+        return 1 if args.fail_on_fail and result.status == "fail" else 0
 
     if args.command == "save-eval-snapshot":
         summary = save_eval_snapshot(

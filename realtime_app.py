@@ -725,7 +725,7 @@ INDEX_HTML = """<!doctype html>
     }
     details { margin-top: 7px; color: var(--text-muted); font-size: 12px; }
     details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+    .chips { display: flex; flex-direction: column; gap: 6px; align-items: stretch; justify-self: end; min-width: 154px; }
     .chip, .badge {
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -735,6 +735,7 @@ INDEX_HTML = """<!doctype html>
       font-size: 10px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
     }
+    .chip { width: 100%; }
     .chip::before {
       content: "";
       display: inline-block;
@@ -947,7 +948,7 @@ INDEX_HTML = """<!doctype html>
       .topbar, .question-row, .cockpit, .tables { grid-template-columns: 1fr; }
       .pane { min-height: 360px; }
       details .grid, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .chips, .question-actions { justify-content: flex-start; }
+      .chips, .question-actions { justify-content: flex-start; justify-self: stretch; }
     }
     @media (max-width: 650px) {
       details .grid, .metrics, .phase-ribbon { grid-template-columns: 1fr; }

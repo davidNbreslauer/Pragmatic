@@ -95,10 +95,7 @@ class LocalResearchExecutor:
             backend=self.backend,
             attempted_backend=self.backend,
             results=results,
-            metadata={
-                "task_count": str(len(tasks)),
-                "succeeded": str(sum(result.status == "succeeded" for result in results)),
-            },
+            metadata=_batch_metadata(tasks, results),
         )
 
 
@@ -107,7 +104,11 @@ class ModalResearchExecutor:
     backend: ExecutionBackend = "modal"
 
     def run_batch(self, tasks: list[ResearchTask]) -> ResearchBatchResult:
-        from thesisgraph.modal_jobs import run_research_tasks_with_modal
+        from thesisgraph.modal_jobs import (
+            MODAL_TASK_RETRIES,
+            MODAL_TASK_TIMEOUT_SECONDS,
+            run_research_tasks_with_modal,
+        )
 
         results = run_research_tasks_with_modal(tasks)
         return ResearchBatchResult(
@@ -115,8 +116,10 @@ class ModalResearchExecutor:
             attempted_backend=self.backend,
             results=results,
             metadata={
-                "task_count": str(len(tasks)),
-                "succeeded": str(sum(result.status == "succeeded" for result in results)),
+                **_batch_metadata(tasks, results),
+                "remote_app": "thesisgraph",
+                "worker_timeout_seconds": str(MODAL_TASK_TIMEOUT_SECONDS),
+                "worker_retries": str(MODAL_TASK_RETRIES),
             },
         )
 
@@ -240,3 +243,16 @@ def _task_source_ids(task: ResearchTask) -> list[str]:
     if task.source is not None:
         return [task.source.id]
     return sorted({source.id for source in task.sources})
+
+
+def _batch_metadata(
+    tasks: list[ResearchTask],
+    results: list[ResearchTaskResult],
+) -> dict[str, str]:
+    return {
+        "task_count": str(len(tasks)),
+        "succeeded": str(sum(result.status == "succeeded" for result in results)),
+        "failed": str(sum(result.status == "failed" for result in results)),
+        "skipped": str(sum(result.status == "skipped" for result in results)),
+        "task_types": ",".join(sorted({task.task_type for task in tasks})),
+    }

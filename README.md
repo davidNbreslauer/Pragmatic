@@ -112,6 +112,10 @@ PYTHONPATH=src python -m thesisgraph live-run-harness
 PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --max-turns 4 --timeout-seconds 60 --observability local
 ```
 
+## Milestone 20
+
+Modal execution now ships the local `thesisgraph` package into the remote worker image, applies worker timeout/retry guardrails, and maps typed `ResearchTask` payloads through Modal with ordered parallel fan-out. Individual remote worker exceptions are converted into typed failed `ResearchTaskResult` records, while full Modal unavailability still falls back to the local executor when requested. Batch metadata now records task counts, success/failure counts, task types, Modal app name, timeout, and retry settings.
+
 Run tests:
 
 ```bash

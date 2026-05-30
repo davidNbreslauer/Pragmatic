@@ -4,6 +4,10 @@ from typing import Any
 
 from thesisgraph.schemas import Assumption, EvidenceItem, ResearchTask, ResearchTaskResult, Source
 
+
+MODAL_TASK_TIMEOUT_SECONDS = 300
+MODAL_TASK_RETRIES = 1
+
 try:
     import modal
 except ImportError:  # pragma: no cover - depends on optional local environment.
@@ -15,10 +19,14 @@ class ModalExtractionUnavailable(RuntimeError):
 
 
 if modal is not None:
-    image = modal.Image.debian_slim().pip_install("pydantic>=2.7,<3")
+    image = (
+        modal.Image.debian_slim()
+        .pip_install("pydantic>=2.7,<3")
+        .add_local_python_source("thesisgraph")
+    )
     app = modal.App(name="thesisgraph", image=image)
 
-    @app.function()
+    @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
     def extract_source_job(source: dict[str, Any], assumptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         from thesisgraph.extractors import extract_source_evidence
         from thesisgraph.schemas import Assumption, Source
@@ -33,7 +41,7 @@ if modal is not None:
             for evidence_item in extract_source_evidence(parsed_source, parsed_assumptions)
         ]
 
-    @app.function()
+    @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
     def research_task_job(task: dict[str, Any]) -> dict[str, Any]:
         from thesisgraph.execution import run_research_task_local
         from thesisgraph.schemas import ResearchTask
@@ -86,7 +94,7 @@ def research_task_job_local(task: dict[str, Any]) -> dict[str, Any]:
     from thesisgraph.execution import run_research_task_local
 
     parsed_task = ResearchTask.model_validate(task)
-    return run_research_task_local(parsed_task, backend="local").model_dump()
+    return run_research_task_local(parsed_task, backend="modal").model_dump()
 
 
 def run_research_tasks_with_modal(tasks: list[ResearchTask]) -> list[ResearchTaskResult]:
@@ -97,11 +105,17 @@ def run_research_tasks_with_modal(tasks: list[ResearchTask]) -> list[ResearchTas
 
     payloads = make_research_task_payloads(tasks)
     with app.run():
-        raw_results = list(research_task_job.map(payloads))
+        raw_results = list(
+            research_task_job.map(
+                payloads,
+                order_outputs=True,
+                return_exceptions=True,
+            )
+        )
 
     return [
-        ResearchTaskResult.model_validate(result)
-        for result in raw_results
+        _coerce_remote_task_result(task, result)
+        for task, result in zip(tasks, raw_results, strict=True)
     ]
 
 
@@ -130,3 +144,23 @@ def extract_evidence_with_modal(
         EvidenceItem.model_validate(item)
         for item in raw_items
     ]
+
+
+def _coerce_remote_task_result(task: ResearchTask, result: Any) -> ResearchTaskResult:
+    if isinstance(result, BaseException):
+        return ResearchTaskResult(
+            task_id=task.id,
+            task_type=task.task_type,
+            backend="modal",
+            status="failed",
+            source_ids=_task_source_ids(task),
+            error=f"{type(result).__name__}: {result}",
+            metadata={"worker_status": "exception"},
+        )
+    return ResearchTaskResult.model_validate(result)
+
+
+def _task_source_ids(task: ResearchTask) -> list[str]:
+    if task.source is not None:
+        return [task.source.id]
+    return sorted({source.id for source in task.sources})

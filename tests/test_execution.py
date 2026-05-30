@@ -4,8 +4,15 @@ from thesisgraph.execution import (
     LocalResearchExecutor,
     build_source_extraction_tasks,
     execute_research_tasks,
+    run_research_task_local,
 )
-from thesisgraph.modal_jobs import make_research_task_payloads, research_task_job_local
+from thesisgraph.modal_jobs import (
+    MODAL_TASK_RETRIES,
+    MODAL_TASK_TIMEOUT_SECONDS,
+    make_research_task_payloads,
+    research_task_job_local,
+    run_research_tasks_with_modal,
+)
 from thesisgraph.research_loop import decompose_thesis, run_research_loop
 from thesisgraph.schemas import EvidenceItem, ResearchTaskResult
 
@@ -35,7 +42,78 @@ def test_modal_task_payload_preserves_general_task_shape():
 
     assert payloads[0]["task_type"] == "extract_evidence"
     assert payloads[0]["source"]["id"] == "source_001"
-    assert ResearchTaskResult.model_validate(raw_result).task_id == tasks[0].id
+    parsed_result = ResearchTaskResult.model_validate(raw_result)
+    assert parsed_result.task_id == tasks[0].id
+    assert parsed_result.backend == "modal"
+
+
+def test_modal_remote_runner_maps_payloads_and_preserves_modal_backend(monkeypatch):
+    sources = load_corpus()
+    assumptions = decompose_thesis(DEFAULT_THESIS)
+    tasks = build_source_extraction_tasks(sources[:1], assumptions, [])
+    seen_payloads = []
+
+    class FakeApp:
+        def run(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeRemoteJob:
+        def map(self, payloads, **kwargs):
+            seen_payloads.extend(payloads)
+            assert kwargs["order_outputs"] is True
+            assert kwargs["return_exceptions"] is True
+            return [
+                run_research_task_local(tasks[0], backend="modal").model_dump()
+            ]
+
+    monkeypatch.setattr("thesisgraph.modal_jobs.modal", object())
+    monkeypatch.setattr("thesisgraph.modal_jobs.app", FakeApp())
+    monkeypatch.setattr("thesisgraph.modal_jobs.research_task_job", FakeRemoteJob())
+
+    results = run_research_tasks_with_modal(tasks)
+
+    assert seen_payloads[0]["task_type"] == "extract_evidence"
+    assert results[0].backend == "modal"
+    assert results[0].status == "succeeded"
+    assert results[0].evidence_items
+
+
+def test_modal_remote_runner_converts_worker_exception_to_failed_result(monkeypatch):
+    sources = load_corpus()
+    assumptions = decompose_thesis(DEFAULT_THESIS)
+    tasks = build_source_extraction_tasks(sources[:1], assumptions, [])
+
+    class FakeApp:
+        def run(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeRemoteJob:
+        def map(self, payloads, **kwargs):
+            del payloads, kwargs
+            return [RuntimeError("worker boom")]
+
+    monkeypatch.setattr("thesisgraph.modal_jobs.modal", object())
+    monkeypatch.setattr("thesisgraph.modal_jobs.app", FakeApp())
+    monkeypatch.setattr("thesisgraph.modal_jobs.research_task_job", FakeRemoteJob())
+
+    results = run_research_tasks_with_modal(tasks)
+
+    assert results[0].backend == "modal"
+    assert results[0].status == "failed"
+    assert results[0].source_ids == ["source_001"]
+    assert "worker boom" in (results[0].error or "")
 
 
 def test_modal_execution_backend_falls_back_to_local(monkeypatch):
@@ -57,6 +135,33 @@ def test_modal_execution_backend_falls_back_to_local(monkeypatch):
     assert result.backend == "local"
     assert result.results[0].evidence_items
     assert result.fallback_reason is not None
+
+
+def test_modal_execution_backend_records_remote_batch_metadata(monkeypatch):
+    sources = load_corpus()
+    assumptions = decompose_thesis(DEFAULT_THESIS)
+    tasks = build_source_extraction_tasks(sources[:2], assumptions, [])
+
+    def fake_modal_runner(modal_tasks):
+        return [
+            run_research_task_local(task, backend="modal")
+            for task in modal_tasks
+        ]
+
+    monkeypatch.setattr(
+        "thesisgraph.modal_jobs.run_research_tasks_with_modal",
+        fake_modal_runner,
+    )
+
+    result = execute_research_tasks(tasks, backend="modal", fallback_to_local=False)
+
+    assert result.attempted_backend == "modal"
+    assert result.backend == "modal"
+    assert result.metadata["task_count"] == "2"
+    assert result.metadata["succeeded"] == "2"
+    assert result.metadata["failed"] == "0"
+    assert result.metadata["worker_timeout_seconds"] == str(MODAL_TASK_TIMEOUT_SECONDS)
+    assert result.metadata["worker_retries"] == str(MODAL_TASK_RETRIES)
 
 
 def test_research_loop_fans_out_one_extract_task_per_source():

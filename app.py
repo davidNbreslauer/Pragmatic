@@ -463,7 +463,7 @@ def render_app_chrome() -> None:
 
 def render_question_panel(scenario: DemoScenario) -> tuple[bool, bool]:
     st.markdown('<div class="pragmatic-eyebrow">Pragmatic</div>', unsafe_allow_html=True)
-    st.title("Ask a technical question.")
+    st.title("Do diligence.")
     st.markdown(
         '<div class="pragmatic-question-copy">'
         "The demo flow is question, live research graph, then an evidence-backed answer."

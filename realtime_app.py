@@ -712,7 +712,7 @@ INDEX_HTML = """<!doctype html>
 <body>
   <main>
     <div class="brand">Pragmatic</div>
-    <h1>Ask a technical question.</h1>
+    <h1>Do diligence.</h1>
     <p class="sub">Watch the live research job think, fan out, build evidence, revise confidence, and leave a trace you can inspect.</p>
     <section class="ask">
       <label for="question">Question</label>

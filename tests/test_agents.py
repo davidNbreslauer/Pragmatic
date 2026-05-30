@@ -163,7 +163,8 @@ def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
     assert captured["agent_name"] == "ResearchManager"
     assert captured["max_turns"] == 4
     assert "Do not perform live web search" in captured["prompt"]
-    assert "execute_source_research_tasks_tool" in captured["prompt"]
+    assert "run_deterministic_research_loop_tool once" in captured["prompt"]
+    assert "do not orchestrate them sequentially by default" in captured["prompt"]
 
 
 def test_live_sdk_finalizes_missing_generated_evals(monkeypatch):

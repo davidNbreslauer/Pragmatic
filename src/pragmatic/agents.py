@@ -30,6 +30,7 @@ from pragmatic.research_loop import (
     DEFAULT_THESIS,
     decompose_thesis,
     generate_initial_questions,
+    observe_research_loop,
     retrieve_sources,
     run_research_loop,
     score_retrieval,
@@ -369,7 +370,7 @@ class ResearchManager:
     """Facade for deterministic and live SDK orchestration."""
 
     model: str | None = None
-    max_turns: int = 10
+    max_turns: int = 3
 
     def run_deterministic(
         self,
@@ -803,15 +804,12 @@ class ResearchManager:
             else "Do not perform live web search or add sources outside the prepared corpus. "
         )
         prompt = (
-            "Run the Pragmatic research loop for this thesis using specialist tools. "
-            "Prefer this order: decompose_thesis_tool, plan_questions_tool, "
-            "retrieve_sources_tool, score_retrieval_tool, execute_source_research_tasks_tool, "
-            "cross_check_evidence_tool, detect_invalid_leaps_tool, update_beliefs_tool, "
-            "propose_decisive_tests_tool, run_decisive_test_verifiers_tool, "
-            "generate_evals_from_failures_tool, build_eval_workshop_tool, "
-            "record_observability_tool. "
-            "If any invalid_leaps are present, generated_evals must be non-empty. "
-            "If generated_evals are missing, call generate_evals_from_failures_tool before returning. "
+            "Run the Pragmatic research loop for this thesis. "
+            "Make one brief strategy decision, then call run_deterministic_research_loop_tool once "
+            "with the run settings below and return the schema-valid ResearchState it produces. "
+            "The individual specialist tools remain available for exceptional cases, but do not "
+            "orchestrate them sequentially by default. "
+            "If any invalid_leaps are present in the final state, generated_evals must be non-empty. "
             f"{search_policy}"
             "Return the final schema-valid ResearchState object.\n\n"
             f"max_iterations: {max_iterations}\n"
@@ -1481,18 +1479,23 @@ if function_tool is not None:
             source_mode=source_mode,
             execution_backend=execution_backend,
         )
-        state = run_research_loop(
-            thesis_text,
-            max_iterations=max_iterations,
-            corpus_path=corpus_path or None,
-            execution_backend=_validate_execution_backend(execution_backend) if execution_backend else None,
-            extraction_mode=_validate_extraction_mode(extraction_mode),
-            source_mode=_validate_source_mode(source_mode),
-            allow_live_web_search=allow_live_web_search,
-            web_search_model=web_search_model or None,
-            max_web_sources=max_web_sources,
-            observability_mode=_validate_observability_mode(observability_mode),
-        )
+        def observe_progress(state: ResearchState, stage: str) -> None:
+            _merge_partial_state(state)
+            _emit_state_graph_snapshot(state, stage=f"loop.{stage}")
+
+        with observe_research_loop(observe_progress):
+            state = run_research_loop(
+                thesis_text,
+                max_iterations=max_iterations,
+                corpus_path=corpus_path or None,
+                execution_backend=_validate_execution_backend(execution_backend) if execution_backend else None,
+                extraction_mode=_validate_extraction_mode(extraction_mode),
+                source_mode=_validate_source_mode(source_mode),
+                allow_live_web_search=allow_live_web_search,
+                web_search_model=web_search_model or None,
+                max_web_sources=max_web_sources,
+                observability_mode=_validate_observability_mode(observability_mode),
+            )
         _merge_partial_state(state)
         _emit_state_graph_snapshot(state, stage="tool.run_deterministic_research_loop_tool")
         _emit_tool_progress(

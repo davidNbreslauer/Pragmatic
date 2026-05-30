@@ -418,7 +418,7 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
         "model": str(raw.get("model") or DEFAULT_MODEL),
         "web_search_model": str(raw.get("web_search_model") or DEFAULT_MODEL),
         "max_iterations": int(raw.get("max_iterations") or 1),
-        "max_turns": int(raw.get("max_turns") or 12),
+        "max_turns": int(raw.get("max_turns") or 3),
         "timeout_seconds": float(raw.get("timeout_seconds") or 300),
         "max_web_sources": int(raw.get("max_web_sources") or 8),
     }
@@ -779,7 +779,7 @@ INDEX_HTML = """<!doctype html>
             <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
             <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
             <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
-            <label>Max turns<input id="max_turns" type="number" value="12" min="1" max="20" /></label>
+            <label>Max turns<input id="max_turns" type="number" value="3" min="1" max="20" /></label>
             <label>Max web sources<input id="max_web_sources" type="number" value="8" min="1" max="20" /></label>
             <label>Full proof<select id="require_demo_proof"><option value="true">required</option><option value="false">not required</option></select></label>
           </div>

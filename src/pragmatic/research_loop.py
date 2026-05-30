@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from pragmatic.belief_update import apply_belief_updates, update_beliefs
@@ -34,6 +37,20 @@ from pragmatic.schemas import (
 
 
 DEFAULT_THESIS = "Graph-based AI scientist systems can accelerate real materials discovery."
+ResearchLoopObserver = Callable[[ResearchState, str], None]
+_RESEARCH_LOOP_OBSERVER: ContextVar[ResearchLoopObserver | None] = ContextVar(
+    "research_loop_observer",
+    default=None,
+)
+
+
+@contextmanager
+def observe_research_loop(observer: ResearchLoopObserver | None):
+    token = _RESEARCH_LOOP_OBSERVER.set(observer)
+    try:
+        yield
+    finally:
+        _RESEARCH_LOOP_OBSERVER.reset(token)
 
 
 def run_research_loop(
@@ -690,3 +707,6 @@ def _trace(
             metadata=metadata or {},
         )
     )
+    observer = _RESEARCH_LOOP_OBSERVER.get()
+    if observer is not None:
+        observer(state, stage)

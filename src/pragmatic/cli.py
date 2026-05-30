@@ -87,7 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     harness_parser.add_argument("--model")
     harness_parser.add_argument("--output")
     harness_parser.add_argument("--output-dir")
-    harness_parser.add_argument("--max-turns", type=int, default=4)
+    harness_parser.add_argument("--max-turns", type=int, default=3)
     harness_parser.add_argument("--timeout-seconds", type=float, default=60.0)
     harness_parser.add_argument(
         "--execution-backend",

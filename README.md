@@ -91,6 +91,10 @@ PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_
 PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-change
 ```
 
+## Milestone 17
+
+Prepared-corpus ingestion now carries structured source metadata and deterministic retrieval scoring. `Source` records include published year, tags, and evidence scope, while `RetrievalScore` records capture source/question matches, matched terms, scores, and rationales. The research loop ranks prepared sources by score, records the score matrix in `ResearchState`, and the Streamlit app shows a `Retrieval Scores` table.
+
 Run tests:
 
 ```bash

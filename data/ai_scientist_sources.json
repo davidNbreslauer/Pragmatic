@@ -5,6 +5,9 @@
     "source_type": "paper",
     "url": "https://arxiv.org/abs/2408.06292",
     "citation": "Lu et al., 2024",
+    "published_year": 2024,
+    "tags": ["ai-scientist", "workflow", "hypothesis-generation", "experiment-automation"],
+    "evidence_scope": "workflow automation demo",
     "text": "Demo excerpt: an AI-scientist workflow automates idea generation, experiment code, paper-style reporting, and review loops. The result is useful evidence about autonomous research workflows, but the snippet does not establish prospective materials discovery."
   },
   {
@@ -13,6 +16,9 @@
     "source_type": "paper",
     "url": "https://arxiv.org/",
     "citation": "Buehler et al., 2024",
+    "published_year": 2024,
+    "tags": ["graph-agents", "knowledge-graph", "materials-hypotheses", "multi-agent"],
+    "evidence_scope": "graph-based hypothesis-generation demo",
     "text": "Demo excerpt: a graph-based multi-agent system uses scientific knowledge graphs and specialist roles to propose bio-inspired materials hypotheses. The hypotheses are plausible research directions, but the excerpt does not show blinded novelty ratings or prospective validation."
   },
   {
@@ -21,6 +27,9 @@
     "source_type": "paper",
     "url": "https://arxiv.org/",
     "citation": "Edge et al., 2024",
+    "published_year": 2024,
+    "tags": ["graphrag", "retrieval", "context", "sensemaking"],
+    "evidence_scope": "graph retrieval and corpus organization",
     "text": "Demo excerpt: graph-based indexing can aggregate local and global context across a text corpus and improve sensemaking for broad questions. This supports context-management claims but not direct scientific discovery claims."
   },
   {
@@ -29,6 +38,9 @@
     "source_type": "benchmark",
     "url": "https://arxiv.org/",
     "citation": "DiscoveryBench authors, 2024",
+    "published_year": 2024,
+    "tags": ["benchmark", "data-driven-discovery", "proxy-evidence", "structured-tasks"],
+    "evidence_scope": "benchmark proxy for discovery skills",
     "text": "Demo excerpt: the benchmark evaluates whether models can recover data-driven discoveries from structured tasks. It measures related research capabilities, but benchmark success is proxy evidence rather than prospective validation."
   },
   {
@@ -37,6 +49,9 @@
     "source_type": "benchmark",
     "url": "https://arxiv.org/",
     "citation": "MLAgentBench authors, 2024",
+    "published_year": 2024,
+    "tags": ["benchmark", "agent-experimentation", "machine-learning", "baseline-comparison"],
+    "evidence_scope": "benchmark proxy for experimentation skills",
     "text": "Demo excerpt: language agents are evaluated on machine learning experimentation tasks with measurable outcomes. This can compare agent behavior, but it is not a direct materials-discovery benchmark."
   },
   {
@@ -45,6 +60,9 @@
     "source_type": "company_claim",
     "url": "https://example.com/autonomous-discovery-claim",
     "citation": "Company announcement, 2025",
+    "published_year": 2025,
+    "tags": ["company-claim", "autonomous-discovery", "research-acceleration", "unvalidated"],
+    "evidence_scope": "promotional claim without independent validation",
     "text": "Demo excerpt: the announcement claims AI-assisted workflows accelerate research cycles and help teams identify promising candidates faster. The snippet does not include independent prospective validation."
   },
   {
@@ -53,6 +71,9 @@
     "source_type": "review",
     "url": "https://example.com/ai-materials-validation-review",
     "citation": "Demo review, 2025",
+    "published_year": 2025,
+    "tags": ["review", "validation-gap", "prospective-validation", "materials-discovery"],
+    "evidence_scope": "review of validation limitations",
     "text": "Demo excerpt: many AI-for-materials claims rely on retrospective rediscovery, narrow case studies, or proxy metrics. Strong claims require prospective predictions, independent validation, and comparisons against strong baselines."
   },
   {
@@ -61,7 +82,9 @@
     "source_type": "case_study",
     "url": "https://example.com/graph-agent-case-study",
     "citation": "Demo case study, 2025",
+    "published_year": 2025,
+    "tags": ["case-study", "graph-agent", "retrieval", "weak-baseline"],
+    "evidence_scope": "selected graph-agent retrieval case study",
     "text": "Demo excerpt: a graph-agent system reports better context recall than a simple vector-search baseline on selected scientific examples. The baseline is limited and the case study does not establish broad generalization."
   }
 ]
-

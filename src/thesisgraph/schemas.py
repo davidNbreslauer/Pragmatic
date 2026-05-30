@@ -105,7 +105,19 @@ class Source(BaseModel):
     source_type: SourceType
     url: str | None = None
     citation: str | None = None
+    published_year: int | None = Field(default=None, ge=1900, le=2100)
+    tags: list[str] = Field(default_factory=list)
+    evidence_scope: str | None = None
     text: str
+
+
+class RetrievalScore(BaseModel):
+    id: str
+    question_id: str
+    source_id: str
+    score: float = Field(ge=0.0, le=1.0)
+    matched_terms: list[str] = Field(default_factory=list)
+    rationale: str
 
 
 class EvidenceItem(BaseModel):
@@ -294,6 +306,7 @@ class ResearchState(BaseModel):
     assumptions: list[Assumption] = Field(default_factory=list)
     research_questions: list[ResearchQuestion] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
+    retrieval_scores: list[RetrievalScore] = Field(default_factory=list)
     evidence_items: list[EvidenceItem] = Field(default_factory=list)
     evidence_conflicts: list[EvidenceConflict] = Field(default_factory=list)
     invalid_leaps: list[InvalidLeap] = Field(default_factory=list)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from thesisgraph.belief_update import apply_belief_updates, update_beliefs
-from thesisgraph.corpus import load_corpus
+from thesisgraph.corpus import load_corpus, rank_sources_for_questions
 from thesisgraph.decisive_tests import propose_decisive_tests
 from thesisgraph.eval_writer import generate_evals_from_failures
 from thesisgraph.eval_workshop import build_eval_workshop
@@ -20,6 +20,7 @@ from thesisgraph.schemas import (
     Assumption,
     ExecutionBackend,
     ResearchQuestion,
+    RetrievalScore,
     ResearchState,
     Source,
     Thesis,
@@ -62,10 +63,22 @@ def run_research_loop(
             break
 
         retrieved_sources = retrieve_sources(open_questions, corpus)
+        retrieval_scores = score_retrieval(open_questions, corpus)
+        _append_unique(state.retrieval_scores, retrieval_scores)
         _append_unique(state.sources, retrieved_sources)
         for question in open_questions:
             question.status = "answered"
-        _trace(state, "retrieve", f"Retrieved {len(retrieved_sources)} local corpus sources.")
+        top_score = max((score.score for score in retrieval_scores), default=0.0)
+        _trace(
+            state,
+            "retrieve",
+            f"Retrieved {len(retrieved_sources)} local corpus sources with deterministic scoring.",
+            metadata={
+                "retrieval_score_count": str(len(retrieval_scores)),
+                "top_score": f"{top_score:.3f}",
+                "top_source_id": _top_source_id(retrieval_scores),
+            },
+        )
 
         extraction_tasks = build_source_extraction_tasks(
             retrieved_sources,
@@ -385,8 +398,18 @@ def generate_initial_questions(state: ResearchState) -> list[ResearchQuestion]:
 def retrieve_sources(questions: list[ResearchQuestion], corpus: list[Source]) -> list[Source]:
     if not questions:
         return []
-    # Deterministic MVP: return the prepared corpus, ordered by source id, for a reliable demo.
-    return sorted(corpus, key=lambda source: source.id)
+    ranked_sources, _scores = rank_sources_for_questions(questions, corpus)
+    return ranked_sources
+
+
+def score_retrieval(
+    questions: list[ResearchQuestion],
+    corpus: list[Source],
+) -> list[RetrievalScore]:
+    if not questions:
+        return []
+    _ranked_sources, scores = rank_sources_for_questions(questions, corpus)
+    return scores
 
 
 def _resolve_execution_backend(
@@ -415,6 +438,13 @@ def _unique_id(item) -> str:
     if hasattr(item, "task_id"):
         return item.task_id
     raise AttributeError(f"Cannot append unique item without id: {item!r}")
+
+
+def _top_source_id(scores: list[RetrievalScore]) -> str:
+    if not scores:
+        return ""
+    top_score = sorted(scores, key=lambda score: (-score.score, score.source_id))[0]
+    return top_score.source_id
 
 
 def _trace(

@@ -180,6 +180,7 @@ def main() -> None:
 
     render_summary(state)
     render_history_controls(state)
+    render_retrieval_scores(state)
     if "run_comparison_json" in st.session_state:
         comparison = RunComparison.model_validate_json(st.session_state.run_comparison_json)
         render_run_comparison(comparison)
@@ -260,6 +261,32 @@ def render_run_comparison(comparison: RunComparison) -> None:
                 "Current rationale": delta.current_update or "",
             }
             for delta in comparison.deltas
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+
+def render_retrieval_scores(state: ResearchState) -> None:
+    st.subheader("Retrieval Scores")
+    if not state.retrieval_scores:
+        st.info("No retrieval scores recorded.")
+        return
+
+    source_titles = {source.id: source.title for source in state.sources}
+    st.dataframe(
+        [
+            {
+                "Question": score.question_id,
+                "Source": source_titles.get(score.source_id, score.source_id),
+                "Score": score.score,
+                "Matched terms": ", ".join(score.matched_terms),
+                "Rationale": score.rationale,
+            }
+            for score in sorted(
+                state.retrieval_scores,
+                key=lambda item: (item.question_id, -item.score, item.source_id),
+            )
         ],
         width="stretch",
         hide_index=True,

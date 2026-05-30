@@ -35,7 +35,12 @@ def build_source_extraction_tasks(
             assumption_ids=[assumption.id for assumption in assumptions],
             source=source,
             assumptions=assumptions,
-            metadata={"source_id": source.id},
+            metadata={
+                "source_id": source.id,
+                "source_type": source.source_type,
+                "evidence_scope": source.evidence_scope or "",
+                "tags": ",".join(source.tags),
+            },
         )
         for index, source in enumerate(sorted(sources, key=lambda item: item.id), start=1)
     ]

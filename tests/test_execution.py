@@ -21,6 +21,8 @@ def test_local_research_executor_runs_typed_source_tasks():
     assert result.attempted_backend == "local"
     assert len(result.results) == 2
     assert all(isinstance(item, EvidenceItem) for item in result.results[0].evidence_items)
+    assert tasks[0].metadata["source_type"] == "paper"
+    assert tasks[0].metadata["evidence_scope"]
 
 
 def test_modal_task_payload_preserves_general_task_shape():

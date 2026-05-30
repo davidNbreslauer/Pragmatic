@@ -38,7 +38,11 @@ def test_research_manager_builds_openai_agent_with_expected_tools():
     assert {
         "decompose_thesis_tool",
         "retrieve_sources_tool",
+        "execute_source_research_tasks_tool",
+        "cross_check_evidence_tool",
         "detect_invalid_leaps_tool",
+        "run_decisive_test_verifiers_tool",
+        "record_observability_tool",
         "run_deterministic_research_loop_tool",
     }.issubset(tool_names)
     assert agent.output_type is not None
@@ -77,7 +81,16 @@ def test_sdk_scripted_orchestration_returns_valid_research_state():
     assert state.agent_run is not None
     assert state.agent_run.mode == "scripted_sdk"
     assert state.agent_run.final_output_validated is True
-    assert any(step.tool_name == "run_deterministic_research_loop_tool" for step in state.agent_run.steps)
+    tool_steps = [step.tool_name for step in state.agent_run.steps]
+    specialist_agents = {step.agent_name for step in state.agent_run.steps}
+    assert "run_deterministic_research_loop_tool" not in tool_steps
+    assert "decompose_thesis_tool" in tool_steps
+    assert "execute_source_research_tasks_tool" in tool_steps
+    assert "run_decisive_test_verifiers_tool" in tool_steps
+    assert "record_observability_tool" in tool_steps
+    assert {"AssumptionDecomposer", "EvidenceExtractor", "BeliefUpdater", "EvalWriter"}.issubset(
+        specialist_agents
+    )
     assert any(event.stage == "agent" for event in state.trace_events)
 
 
@@ -140,6 +153,7 @@ def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
     assert captured["agent_name"] == "ResearchManager"
     assert captured["max_turns"] == 4
     assert "Do not perform live web search" in captured["prompt"]
+    assert "execute_source_research_tasks_tool" in captured["prompt"]
 
 
 def test_cli_live_sdk_requires_explicit_allow_flag(capsys):

@@ -498,6 +498,7 @@ def render_agent_run(state: ResearchState) -> None:
             [
                 {
                     "Step": step.id,
+                    "Specialist": step.agent_name or "",
                     "Tool": step.tool_name,
                     "Status": step.status,
                     "Summary": step.summary,

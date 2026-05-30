@@ -9,13 +9,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from thesisgraph.belief_update import update_beliefs
+from thesisgraph.belief_update import apply_belief_updates, update_beliefs
 from thesisgraph.corpus import load_corpus
 from thesisgraph.decisive_tests import propose_decisive_tests
 from thesisgraph.eval_writer import generate_evals_from_failures
+from thesisgraph.eval_workshop import build_eval_workshop
+from thesisgraph.execution import (
+    build_cross_check_task,
+    build_source_extraction_tasks,
+    execute_research_tasks,
+)
 from thesisgraph.extractors import ExtractionMode, extract_evidence
 from thesisgraph.invalid_leaps import detect_invalid_leaps
-from thesisgraph.raindrop_client import ObservabilityMode
+from thesisgraph.raindrop_client import ObservabilityMode, record_research_run
 from thesisgraph.replay import run_replay_demo
 from thesisgraph.research_loop import (
     DEFAULT_THESIS,
@@ -23,18 +29,30 @@ from thesisgraph.research_loop import (
     generate_initial_questions,
     retrieve_sources,
     run_research_loop,
+    score_retrieval,
 )
 from thesisgraph.schemas import (
     AgentRunRecord,
     AgentRunStep,
     Assumption,
+    BeliefUpdate,
+    DecisiveTest,
+    EvidenceConflict,
+    EvidenceItem,
+    EvalWorkshopRecord,
     ExecutionBackend,
+    GeneratedEval,
     InvalidLeap,
+    ObservabilityRecord,
+    ResearchBatchResult,
     ResearchQuestion,
+    RetrievalScore,
     ResearchState,
     Source,
+    Thesis,
     TraceEvent,
 )
+from thesisgraph.verifiers import build_verifier_tasks
 
 try:
     from agents import Agent, Runner, function_tool
@@ -118,42 +136,275 @@ class ResearchManager:
         _require_agents_sdk()
         agent = self.build_agent()
         tools = {tool.name: tool for tool in agent.tools}
-        tool = tools["run_deterministic_research_loop_tool"]
-        state_json = _invoke_function_tool(
-            tool,
-            {
-                "thesis_text": thesis_text,
-                "max_iterations": max_iterations,
-                "corpus_path": str(corpus_path) if corpus_path else "",
-                "execution_backend": execution_backend or "",
-                "extraction_mode": extraction_mode,
+        state = ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery"))
+        _append_agent_trace(
+            state,
+            "OpenAI Agents SDK ResearchManager initialized specialist orchestration.",
+            metadata={"mode": "scripted_sdk", "agent": agent.name},
+        )
+
+        step_records: list[AgentRunStep] = []
+        corpus_path_value = str(corpus_path) if corpus_path else ""
+        execution_backend_value = execution_backend or ("modal" if extraction_mode == "modal" else "")
+        resolved_backend = _validate_execution_backend(execution_backend_value)
+
+        assumptions_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="AssumptionDecomposer",
+            tool_name="decompose_thesis_tool",
+            arguments={"thesis_text": thesis_text},
+            summary="Decomposed thesis into explicit assumptions.",
+        )
+        state.assumptions = [
+            Assumption.model_validate(assumption)
+            for assumption in json.loads(assumptions_json)
+        ]
+
+        questions_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="QueryPlanner",
+            tool_name="plan_questions_tool",
+            arguments={"state_json": state.model_dump_json()},
+            summary="Planned initial research questions from assumptions.",
+        )
+        state.research_questions = [
+            ResearchQuestion.model_validate(question)
+            for question in json.loads(questions_json)
+        ]
+
+        for iteration in range(1, max_iterations + 1):
+            state.iteration = iteration
+            open_questions = [
+                question
+                for question in state.research_questions
+                if question.status == "open"
+            ]
+            if not open_questions:
+                _append_agent_trace(
+                    state,
+                    "ResearchManager stopped because no open questions remain.",
+                    metadata={"iteration": str(iteration)},
+                )
+                break
+
+            open_questions_json = _to_json([question.model_dump() for question in open_questions])
+            sources_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="RetrieverTool",
+                tool_name="retrieve_sources_tool",
+                arguments={
+                    "research_questions_json": open_questions_json,
+                    "corpus_path": corpus_path_value,
+                },
+                summary="Retrieved prepared-corpus sources for open questions.",
+            )
+            retrieved_sources = [
+                Source.model_validate(source)
+                for source in json.loads(sources_json)
+            ]
+            _append_unique(state.sources, retrieved_sources)
+
+            scores_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="RetrievalScorer",
+                tool_name="score_retrieval_tool",
+                arguments={
+                    "research_questions_json": open_questions_json,
+                    "corpus_path": corpus_path_value,
+                },
+                summary="Scored prepared-corpus retrieval matches.",
+            )
+            retrieval_scores = [
+                RetrievalScore.model_validate(score)
+                for score in json.loads(scores_json)
+            ]
+            _append_unique(state.retrieval_scores, retrieval_scores)
+            for question in open_questions:
+                question.status = "answered"
+
+            extraction_result_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="EvidenceExtractor",
+                tool_name="execute_source_research_tasks_tool",
+                arguments={
+                    "sources_json": sources_json,
+                    "assumptions_json": assumptions_json,
+                    "research_questions_json": open_questions_json,
+                    "execution_backend": execution_backend_value,
+                    "fallback_to_local": True,
+                },
+                summary="Executed source extraction tasks through the selected backend.",
+            )
+            extraction_result = ResearchBatchResult.model_validate_json(extraction_result_json)
+            _append_unique(state.research_task_results, extraction_result.results)
+            extracted_items = [
+                item
+                for result in extraction_result.results
+                for item in result.evidence_items
+            ]
+            _append_unique(state.evidence_items, sorted(extracted_items, key=lambda item: item.id))
+
+            cross_check_result_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="Skeptic",
+                tool_name="cross_check_evidence_tool",
+                arguments={
+                    "sources_json": _to_json([source.model_dump() for source in state.sources]),
+                    "evidence_items_json": _to_json([item.model_dump() for item in state.evidence_items]),
+                    "assumptions_json": assumptions_json,
+                    "execution_backend": execution_backend_value,
+                    "fallback_to_local": True,
+                },
+                summary="Cross-checked evidence across sources before belief updates.",
+            )
+            cross_check_result = ResearchBatchResult.model_validate_json(cross_check_result_json)
+            _append_unique(state.research_task_results, cross_check_result.results)
+            state.evidence_conflicts = [
+                conflict
+                for result in cross_check_result.results
+                for conflict in result.evidence_conflicts
+            ]
+
+            leaps_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="Skeptic",
+                tool_name="detect_invalid_leaps_tool",
+                arguments={"state_json": state.model_dump_json()},
+                summary="Detected invalid inference leaps in the current research state.",
+            )
+            _append_unique(
+                state.invalid_leaps,
+                [InvalidLeap.model_validate(leap) for leap in json.loads(leaps_json)],
+            )
+
+            updates_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="BeliefUpdater",
+                tool_name="update_beliefs_tool",
+                arguments={"state_json": state.model_dump_json()},
+                summary="Updated assumption support and confidence from typed evidence.",
+            )
+            updates = [
+                BeliefUpdate.model_validate(update)
+                for update in json.loads(updates_json)
+            ]
+            state.belief_updates = updates
+            apply_belief_updates(state, updates)
+
+        decisive_tests_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="DecisiveTestWriter",
+            tool_name="propose_decisive_tests_tool",
+            arguments={"state_json": state.model_dump_json()},
+            summary="Proposed decisive tests for the remaining uncertainty.",
+        )
+        state.decisive_tests = [
+            DecisiveTest.model_validate(test)
+            for test in json.loads(decisive_tests_json)
+        ]
+
+        verifier_result_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="DecisiveTestVerifier",
+            tool_name="run_decisive_test_verifiers_tool",
+            arguments={
+                "decisive_tests_json": decisive_tests_json,
+                "sources_json": _to_json([source.model_dump() for source in state.sources]),
+                "evidence_items_json": _to_json([item.model_dump() for item in state.evidence_items]),
+                "evidence_conflicts_json": _to_json([conflict.model_dump() for conflict in state.evidence_conflicts]),
+                "execution_backend": execution_backend_value,
+                "fallback_to_local": True,
+            },
+            summary="Ran decisive-test verifier tasks through the selected backend.",
+        )
+        verifier_result = ResearchBatchResult.model_validate_json(verifier_result_json)
+        _append_unique(state.research_task_results, verifier_result.results)
+        state.verifier_results = [
+            result
+            for task_result in verifier_result.results
+            for result in task_result.verifier_results
+        ]
+        if state.verifier_results:
+            verifier_updates_json = _invoke_specialist_tool(
+                tools,
+                step_records,
+                agent_name="BeliefUpdater",
+                tool_name="update_beliefs_tool",
+                arguments={"state_json": state.model_dump_json()},
+                summary="Applied decisive-test verifier results to belief confidence.",
+            )
+            verifier_updates = [
+                BeliefUpdate.model_validate(update)
+                for update in json.loads(verifier_updates_json)
+            ]
+            state.belief_updates = verifier_updates
+            apply_belief_updates(state, verifier_updates)
+
+        evals_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="EvalWriter",
+            tool_name="generate_evals_from_failures_tool",
+            arguments={
+                "invalid_leaps_json": _to_json([leap.model_dump() for leap in state.invalid_leaps])
+            },
+            summary="Generated eval artifacts from detected reasoning failures.",
+        )
+        state.generated_evals = [
+            GeneratedEval.model_validate(generated_eval)
+            for generated_eval in json.loads(evals_json)
+        ]
+
+        workshop_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="RaindropWorkshop",
+            tool_name="build_eval_workshop_tool",
+            arguments={"state_json": state.model_dump_json()},
+            summary="Built the failure-to-eval workshop links and task spans.",
+        )
+        state.eval_workshop = EvalWorkshopRecord.model_validate_json(workshop_json)
+
+        observability_json = _invoke_specialist_tool(
+            tools,
+            step_records,
+            agent_name="RaindropWorkshop",
+            tool_name="record_observability_tool",
+            arguments={
+                "state_json": state.model_dump_json(),
                 "observability_mode": observability_mode,
             },
+            summary="Recorded trace and workshop artifacts through the observability adapter.",
         )
-        state = _coerce_research_state(state_json)
+        state.observability = ObservabilityRecord.model_validate_json(observability_json)
         state.agent_run = AgentRunRecord(
             mode="scripted_sdk",
             status="succeeded",
             agent_name=agent.name,
             model=self.model,
             tool_names=sorted(tools),
-            steps=[
-                AgentRunStep(
-                    id="agent_step_001",
-                    tool_name=tool.name,
-                    status="succeeded",
-                    summary=(
-                        "SDK tool invoked canonical research loop and returned a schema-validated ResearchState."
-                    ),
-                )
-            ],
+            steps=step_records,
             final_output_validated=True,
-            message="Offline SDK-scripted orchestration used the same tool boundary as the live agent.",
+            message="Offline SDK-scripted orchestration ran specialist agents/tools instead of the canonical loop tool.",
         )
         _append_agent_trace(
             state,
-            "OpenAI Agents SDK scripted orchestration validated the final ResearchState.",
-            metadata={"mode": "scripted_sdk", "tool": tool.name},
+            "OpenAI Agents SDK specialist orchestration validated the final ResearchState.",
+            metadata={
+                "mode": "scripted_sdk",
+                "step_count": str(len(step_records)),
+                "execution_backend": resolved_backend,
+            },
         )
         return state
 
@@ -207,8 +458,13 @@ class ResearchManager:
         execution_backend_value = execution_backend or ""
         corpus_path_value = str(corpus_path) if corpus_path else ""
         prompt = (
-            "Run the ThesisGraph research loop for this thesis. Use the available "
-            "run_deterministic_research_loop_tool exactly once with these arguments. "
+            "Run the ThesisGraph research loop for this thesis using specialist tools. "
+            "Prefer this order: decompose_thesis_tool, plan_questions_tool, "
+            "retrieve_sources_tool, score_retrieval_tool, execute_source_research_tasks_tool, "
+            "cross_check_evidence_tool, detect_invalid_leaps_tool, update_beliefs_tool, "
+            "propose_decisive_tests_tool, run_decisive_test_verifiers_tool, "
+            "generate_evals_from_failures_tool, build_eval_workshop_tool, "
+            "record_observability_tool. "
             "Do not perform live web search or add sources outside the prepared corpus. "
             "Return the final schema-valid ResearchState object.\n\n"
             f"max_iterations: {max_iterations}\n"
@@ -251,11 +507,17 @@ def build_research_tools() -> list[Any]:
         decompose_thesis_tool,
         plan_questions_tool,
         retrieve_sources_tool,
+        score_retrieval_tool,
         extract_evidence_tool,
+        execute_source_research_tasks_tool,
+        cross_check_evidence_tool,
         detect_invalid_leaps_tool,
         update_beliefs_tool,
         propose_decisive_tests_tool,
+        run_decisive_test_verifiers_tool,
         generate_evals_from_failures_tool,
+        build_eval_workshop_tool,
+        record_observability_tool,
         run_deterministic_research_loop_tool,
         run_replay_demo_tool,
     ]
@@ -309,6 +571,18 @@ if function_tool is not None:
         return _to_json([source.model_dump() for source in sources])
 
     @function_tool
+    def score_retrieval_tool(research_questions_json: str, corpus_path: str = "") -> str:
+        """Score prepared-corpus retrieval matches and return RetrievalScore JSON."""
+
+        questions = [
+            ResearchQuestion.model_validate(question)
+            for question in json.loads(research_questions_json)
+        ]
+        corpus = load_corpus(corpus_path or None)
+        scores = score_retrieval(questions, corpus)
+        return _to_json([score.model_dump() for score in scores])
+
+    @function_tool
     def extract_evidence_tool(sources_json: str, assumptions_json: str) -> str:
         """Extract typed evidence items from source and assumption JSON."""
 
@@ -319,6 +593,60 @@ if function_tool is not None:
         ]
         evidence = extract_evidence(sources, assumptions)
         return _to_json([item.model_dump() for item in evidence])
+
+    @function_tool
+    def execute_source_research_tasks_tool(
+        sources_json: str,
+        assumptions_json: str,
+        research_questions_json: str,
+        execution_backend: str = "",
+        fallback_to_local: bool = True,
+    ) -> str:
+        """Fan out source extraction ResearchTask objects and return ResearchBatchResult JSON."""
+
+        sources = [Source.model_validate(source) for source in json.loads(sources_json)]
+        assumptions = [
+            Assumption.model_validate(assumption)
+            for assumption in json.loads(assumptions_json)
+        ]
+        questions = [
+            ResearchQuestion.model_validate(question)
+            for question in json.loads(research_questions_json)
+        ]
+        tasks = build_source_extraction_tasks(sources, assumptions, questions)
+        result = execute_research_tasks(
+            tasks,
+            backend=_validate_execution_backend(execution_backend),
+            fallback_to_local=fallback_to_local,
+        )
+        return result.model_dump_json()
+
+    @function_tool
+    def cross_check_evidence_tool(
+        sources_json: str,
+        evidence_items_json: str,
+        assumptions_json: str,
+        execution_backend: str = "",
+        fallback_to_local: bool = True,
+    ) -> str:
+        """Cross-check extracted evidence and return ResearchBatchResult JSON."""
+
+        sources = [Source.model_validate(source) for source in json.loads(sources_json)]
+        evidence_items = [
+            EvidenceItem.model_validate(item)
+            for item in json.loads(evidence_items_json)
+        ]
+        assumptions = [
+            Assumption.model_validate(assumption)
+            for assumption in json.loads(assumptions_json)
+        ]
+        task = build_cross_check_task(sources, evidence_items, assumptions)
+        result = execute_research_tasks(
+            [task],
+            backend=_validate_execution_backend(execution_backend),
+            fallback_to_local=fallback_to_local,
+        )
+        return result.model_dump_json()
 
     @function_tool
     def detect_invalid_leaps_tool(state_json: str) -> str:
@@ -345,6 +673,43 @@ if function_tool is not None:
         return _to_json([test.model_dump() for test in tests])
 
     @function_tool
+    def run_decisive_test_verifiers_tool(
+        decisive_tests_json: str,
+        sources_json: str,
+        evidence_items_json: str,
+        evidence_conflicts_json: str,
+        execution_backend: str = "",
+        fallback_to_local: bool = True,
+    ) -> str:
+        """Run decisive-test verifier tasks and return ResearchBatchResult JSON."""
+
+        tests = [
+            DecisiveTest.model_validate(test)
+            for test in json.loads(decisive_tests_json)
+        ]
+        sources = [Source.model_validate(source) for source in json.loads(sources_json)]
+        evidence_items = [
+            EvidenceItem.model_validate(item)
+            for item in json.loads(evidence_items_json)
+        ]
+        evidence_conflicts = [
+            EvidenceConflict.model_validate(conflict)
+            for conflict in json.loads(evidence_conflicts_json)
+        ]
+        tasks = build_verifier_tasks(
+            tests,
+            sources,
+            evidence_items,
+            evidence_conflicts,
+        )
+        result = execute_research_tasks(
+            tasks,
+            backend=_validate_execution_backend(execution_backend),
+            fallback_to_local=fallback_to_local,
+        )
+        return result.model_dump_json()
+
+    @function_tool
     def generate_evals_from_failures_tool(invalid_leaps_json: str) -> str:
         """Generate eval artifacts from invalid leap JSON."""
 
@@ -354,6 +719,28 @@ if function_tool is not None:
         ]
         evals = generate_evals_from_failures(invalid_leaps)
         return _to_json([generated_eval.model_dump() for generated_eval in evals])
+
+    @function_tool
+    def build_eval_workshop_tool(state_json: str) -> str:
+        """Build failure-to-eval workshop links and task-span artifacts."""
+
+        state = ResearchState.model_validate_json(state_json)
+        workshop = build_eval_workshop(state)
+        return workshop.model_dump_json()
+
+    @function_tool
+    def record_observability_tool(
+        state_json: str,
+        observability_mode: str = "local",
+    ) -> str:
+        """Record trace/workshop observability artifacts and return ObservabilityRecord JSON."""
+
+        state = ResearchState.model_validate_json(state_json)
+        record = record_research_run(
+            state,
+            mode=_validate_observability_mode(observability_mode),
+        )
+        return record.model_dump_json()
 
     @function_tool
     def run_deterministic_research_loop_tool(
@@ -401,11 +788,17 @@ else:
     decompose_thesis_tool = None
     plan_questions_tool = None
     retrieve_sources_tool = None
+    score_retrieval_tool = None
     extract_evidence_tool = None
+    execute_source_research_tasks_tool = None
+    cross_check_evidence_tool = None
     detect_invalid_leaps_tool = None
     update_beliefs_tool = None
     propose_decisive_tests_tool = None
+    run_decisive_test_verifiers_tool = None
     generate_evals_from_failures_tool = None
+    build_eval_workshop_tool = None
+    record_observability_tool = None
     run_deterministic_research_loop_tool = None
     run_replay_demo_tool = None
 
@@ -421,6 +814,28 @@ def _invoke_function_tool(tool: Any, arguments: dict[str, Any]) -> str:
         result = _run_awaitable(result)
     if not isinstance(result, str):
         return json.dumps(result)
+    return result
+
+
+def _invoke_specialist_tool(
+    tools: dict[str, Any],
+    step_records: list[AgentRunStep],
+    *,
+    agent_name: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+    summary: str,
+) -> str:
+    result = _invoke_function_tool(tools[tool_name], arguments)
+    step_records.append(
+        AgentRunStep(
+            id=f"agent_step_{len(step_records) + 1:03d}",
+            agent_name=agent_name,
+            tool_name=tool_name,
+            status="succeeded",
+            summary=summary,
+        )
+    )
     return result
 
 
@@ -476,6 +891,23 @@ def _append_agent_trace(
             metadata=metadata or {},
         )
     )
+
+
+def _append_unique(existing: list, additions: list) -> None:
+    existing_ids = {_unique_id(item) for item in existing}
+    for item in additions:
+        item_id = _unique_id(item)
+        if item_id not in existing_ids:
+            existing.append(item)
+            existing_ids.add(item_id)
+
+
+def _unique_id(item: Any) -> str:
+    if hasattr(item, "id"):
+        return item.id
+    if hasattr(item, "task_id"):
+        return item.task_id
+    raise AttributeError(f"Cannot append unique item without id: {item!r}")
 
 
 def _validate_extraction_mode(value: str) -> ExtractionMode:

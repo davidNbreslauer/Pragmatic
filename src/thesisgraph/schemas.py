@@ -292,6 +292,7 @@ class AgentRunStep(BaseModel):
     tool_name: str
     status: AgentRunStatus
     summary: str
+    agent_name: str | None = None
 
 
 class AgentRunRecord(BaseModel):

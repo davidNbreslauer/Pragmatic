@@ -120,6 +120,10 @@ Modal execution now ships the local `thesisgraph` package into the remote worker
 
 Raindrop Workshop observability now writes a durable workshop bundle alongside the chronological trace. Local and Raindrop modes share the same failure/eval/replay payload shape, including failure artifacts, generated eval artifacts linked to source failures, replay artifacts, and a Raindrop event plan. The Streamlit observability section now surfaces the workshop bundle path and failure artifact IDs.
 
+## Milestone 22
+
+OpenAI Agents SDK scripted orchestration now runs through visible specialist tool steps instead of invoking the canonical loop as one opaque tool call. `ResearchManager.run_sdk_orchestrated()` records specialist steps for assumption decomposition, question planning, retrieval, retrieval scoring, backend execution fan-out, cross-checking, invalid-leap detection, belief updates, decisive-test writing, verifier execution, eval writing, workshop assembly, and observability recording. The live SDK prompt now instructs the same specialist-tool order while preserving the prepared-corpus-only/no-live-web-search guardrail.
+
 Run tests:
 
 ```bash

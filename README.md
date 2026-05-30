@@ -124,6 +124,15 @@ Raindrop Workshop observability now writes a durable workshop bundle alongside t
 
 OpenAI Agents SDK scripted orchestration now runs through visible specialist tool steps instead of invoking the canonical loop as one opaque tool call. `ResearchManager.run_sdk_orchestrated()` records specialist steps for assumption decomposition, question planning, retrieval, retrieval scoring, backend execution fan-out, cross-checking, invalid-leap detection, belief updates, decisive-test writing, verifier execution, eval writing, workshop assembly, and observability recording. The live SDK prompt now instructs the same specialist-tool order while preserving the prepared-corpus-only/no-live-web-search guardrail.
 
+## Milestone 23
+
+Live-demo integration readiness now has a first-class doctor. `run_integration_doctor()` checks OpenAI Agents SDK import/credential readiness, Modal installation/profile readiness with an optional live remote smoke task, and local Raindrop Workshop bundle generation without requiring a hosted write key. The CLI and Streamlit app expose the same checks so the demo can show which layers are live versus skipped or unavailable.
+
+```bash
+PYTHONPATH=src python -m thesisgraph doctor
+PYTHONPATH=src python -m thesisgraph doctor --run-openai-live --run-modal-remote
+```
+
 Run tests:
 
 ```bash

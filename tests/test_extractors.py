@@ -71,12 +71,13 @@ def test_modal_extraction_mode_can_use_adapter_without_remote_call(monkeypatch):
 
 
 def test_research_loop_records_modal_fallback_metadata(monkeypatch):
-    def failing_modal_extractor(modal_sources, modal_assumptions):
+    def failing_modal_runner(tasks):
+        del tasks
         raise RuntimeError("modal unavailable in test")
 
     monkeypatch.setattr(
-        "thesisgraph.extractors.extract_evidence_with_modal",
-        failing_modal_extractor,
+        "thesisgraph.modal_jobs.run_research_tasks_with_modal",
+        failing_modal_runner,
     )
 
     state = run_research_loop(

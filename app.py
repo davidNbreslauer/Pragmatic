@@ -8,6 +8,7 @@ import streamlit as st
 from thesisgraph import (
     DEFAULT_THESIS,
     EvalSnapshotComparison,
+    IntegrationDoctorResult,
     LiveRunResult,
     RegressionEvalSuiteResult,
     ResearchManager,
@@ -16,6 +17,7 @@ from thesisgraph import (
     list_eval_snapshots,
     run_live_harness_sync,
     run_eval_suite,
+    run_integration_doctor,
     save_eval_snapshot,
 )
 from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
@@ -55,6 +57,12 @@ def main() -> None:
             options=["local", "raindrop", "off"],
             index=0,
         )
+        st.header("Integrations")
+        doctor_openai_live = st.checkbox("Doctor: live OpenAI API", value=False)
+        doctor_modal_remote = st.checkbox("Doctor: remote Modal task", value=False)
+        doctor_clicked = st.button("Run Integration Doctor", width="stretch")
+
+        st.header("Replay")
         replay_demo = st.checkbox("Replay demo", value=False)
         run_clicked = st.button("Run ThesisGraph", type="primary", width="stretch")
 
@@ -193,6 +201,14 @@ def main() -> None:
             )
         st.session_state.eval_suite_result_json = eval_suite.model_dump_json()
 
+    if doctor_clicked:
+        with st.spinner("Checking live integration readiness..."):
+            doctor_result = run_integration_doctor(
+                run_openai_live=doctor_openai_live,
+                run_modal_remote=doctor_modal_remote,
+            )
+        st.session_state.integration_doctor_json = doctor_result.model_dump_json()
+
     if save_eval_snapshot_clicked:
         with st.spinner("Saving known-good eval snapshot..."):
             summary = save_eval_snapshot(
@@ -225,6 +241,11 @@ def main() -> None:
         st.session_state.run_comparison_json = comparison.model_dump_json()
 
     render_summary(state)
+    if "integration_doctor_json" in st.session_state:
+        doctor_result = IntegrationDoctorResult.model_validate_json(
+            st.session_state.integration_doctor_json
+        )
+        render_integration_doctor(doctor_result)
     render_history_controls(state)
     render_retrieval_scores(state)
     if "run_comparison_json" in st.session_state:
@@ -269,6 +290,31 @@ def render_summary(state: ResearchState) -> None:
     col4.metric("Invalid Leaps", len(state.invalid_leaps))
     col5.metric("Verifier Results", len(state.verifier_results))
     col6.metric("Generated Evals", len(state.generated_evals))
+
+
+def render_integration_doctor(result: IntegrationDoctorResult) -> None:
+    st.subheader("Integration Doctor")
+    st.caption(result.summary)
+    col1, col2 = st.columns(2)
+    col1.metric("Overall", result.status)
+    col2.metric("Live checks", len([check for check in result.checks if check.live]))
+    st.dataframe(
+        [
+            {
+                "Layer": check.layer,
+                "Status": check.status,
+                "Live": check.live,
+                "Duration ms": check.duration_ms,
+                "Message": check.message,
+                "Artifact": check.artifact_path or "",
+            }
+            for check in result.checks
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+    with st.expander("Integration metadata"):
+        st.code(result.model_dump_json(indent=2), language="json")
 
 
 def render_history_controls(state: ResearchState) -> None:

@@ -1,6 +1,7 @@
 """ThesisGraph deterministic MVP scaffold."""
 
 from thesisgraph.agents import ResearchManager
+from thesisgraph.doctor import run_integration_doctor
 from thesisgraph.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot,
@@ -25,6 +26,7 @@ from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
 from thesisgraph.schemas import (
     EvalSnapshotComparison,
     EvalSnapshotSummary,
+    IntegrationDoctorResult,
     LiveRunResult,
     RegressionEvalSuiteResult,
     ReplayResult,
@@ -37,6 +39,7 @@ __all__ = [
     "DEFAULT_THESIS",
     "EvalSnapshotComparison",
     "EvalSnapshotSummary",
+    "IntegrationDoctorResult",
     "LiveRunResult",
     "RegressionEvalSuiteResult",
     "ReplayResult",
@@ -60,6 +63,7 @@ __all__ = [
     "run_live_harness",
     "run_live_harness_sync",
     "run_eval_suite",
+    "run_integration_doctor",
     "run_replay_demo",
     "run_research_loop",
     "save_eval_snapshot",

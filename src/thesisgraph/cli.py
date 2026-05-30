@@ -11,6 +11,7 @@ from thesisgraph.agents import (
     LiveAgentsSDKNotEnabled,
     ResearchManager,
 )
+from thesisgraph.doctor import run_integration_doctor
 from thesisgraph.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot_by_id,
@@ -99,6 +100,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--no-artifact",
         action="store_true",
         help="Do not write the harness result under .thesisgraph/live_runs.",
+    )
+
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Check OpenAI Agents SDK, Modal, and Raindrop Workshop integration readiness.",
+    )
+    doctor_parser.add_argument(
+        "--run-openai-live",
+        action="store_true",
+        help="Run a live OpenAI API credential check in addition to SDK import checks.",
+    )
+    doctor_parser.add_argument(
+        "--run-modal-remote",
+        action="store_true",
+        help="Run a tiny live Modal remote task instead of only checking local configuration.",
+    )
+    doctor_parser.add_argument("--output")
+    doctor_parser.add_argument("--output-dir")
+    doctor_parser.add_argument(
+        "--fail-on-degraded",
+        action="store_true",
+        help="Exit non-zero when any integration is unavailable, skipped, or failed.",
     )
 
     snapshot_parser = subparsers.add_parser(
@@ -238,6 +261,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(payload)
         if result.status in {"blocked", "failed", "timed_out"}:
             return 2
+        return 0
+
+    if args.command == "doctor":
+        result = run_integration_doctor(
+            run_openai_live=args.run_openai_live,
+            run_modal_remote=args.run_modal_remote,
+            output_dir=args.output_dir,
+        )
+        payload = result.model_dump_json(indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        if result.status == "failed":
+            return 2
+        if args.fail_on_degraded and result.status == "degraded":
+            return 1
         return 0
 
     if args.command == "save-eval-snapshot":

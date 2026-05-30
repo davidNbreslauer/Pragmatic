@@ -75,6 +75,20 @@ RegressionEvalKind = Literal[
 EvalCaseStatus = Literal["pass", "fail"]
 EvalSnapshotComparisonStatus = Literal["match", "changed", "regression"]
 EvalFixtureDeltaStatus = Literal["same", "missing", "new", "changed"]
+IntegrationLayer = Literal[
+    "openai_agents_sdk",
+    "modal",
+    "raindrop_workshop",
+]
+IntegrationCheckStatus = Literal[
+    "live",
+    "ready",
+    "fallback",
+    "unavailable",
+    "failed",
+    "skipped",
+]
+IntegrationDoctorStatus = Literal["ready", "degraded", "failed"]
 
 
 class Thesis(BaseModel):
@@ -244,6 +258,22 @@ class ObservabilityRecord(BaseModel):
     failure_artifact_ids: list[str] = Field(default_factory=list)
     workshop_artifact_ids: list[str] = Field(default_factory=list)
     message: str | None = None
+
+
+class IntegrationCheck(BaseModel):
+    layer: IntegrationLayer
+    status: IntegrationCheckStatus
+    live: bool = False
+    message: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+    artifact_path: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+
+
+class IntegrationDoctorResult(BaseModel):
+    status: IntegrationDoctorStatus
+    checks: list[IntegrationCheck]
+    summary: str
 
 
 class EvalWorkshopTaskSpan(BaseModel):

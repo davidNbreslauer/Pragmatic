@@ -2,6 +2,7 @@ from thesisgraph import DEFAULT_THESIS
 from thesisgraph.corpus import load_corpus
 from thesisgraph.execution import (
     LocalResearchExecutor,
+    build_source_parse_tasks,
     build_source_extraction_tasks,
     execute_research_tasks,
     run_research_task_local,
@@ -30,6 +31,21 @@ def test_local_research_executor_runs_typed_source_tasks():
     assert all(isinstance(item, EvidenceItem) for item in result.results[0].evidence_items)
     assert tasks[0].metadata["source_type"] == "paper"
     assert tasks[0].metadata["evidence_scope"]
+
+
+def test_source_parse_tasks_record_worker_metadata():
+    sources = load_corpus()
+    questions = []
+    tasks = build_source_parse_tasks(sources[:1], questions)
+
+    result = LocalResearchExecutor().run_batch(tasks)
+
+    task_result = result.results[0]
+    assert task_result.task_type == "parse_source"
+    assert task_result.sources[0].id == "source_001"
+    assert task_result.metadata["worker_status"] == "completed"
+    assert "duration_ms" in task_result.metadata
+    assert task_result.metadata["output_source_count"] == "1"
 
 
 def test_modal_task_payload_preserves_general_task_shape():
@@ -179,3 +195,17 @@ def test_research_loop_fans_out_one_extract_task_per_source():
         source.id for source in state.sources
     )
     assert any(event.stage == "execute" for event in state.trace_events)
+
+
+def test_research_loop_records_parse_and_cross_check_execution_tasks():
+    state = run_research_loop(
+        DEFAULT_THESIS,
+        execution_backend="local",
+        observability_mode="off",
+    )
+    task_types = [result.task_type for result in state.research_task_results]
+
+    assert task_types.count("parse_source") == len(state.sources)
+    assert task_types.count("extract_evidence") == len(state.sources)
+    assert "cross_check" in task_types
+    assert any(result.metadata.get("duration_ms") for result in state.research_task_results)

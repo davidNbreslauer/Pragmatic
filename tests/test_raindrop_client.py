@@ -87,7 +87,8 @@ def test_trace_payload_links_failures_to_evals_and_tasks():
     assert "invalid_leap_to_eval" in link_types
     assert "evidence_conflict_to_invalid_leap" in link_types
     assert "verifier_failure_to_eval" in link_types
-    assert payload["task_spans"][0]["task_id"].startswith("task_extract")
+    assert any(span["task_id"].startswith("task_parse") for span in payload["task_spans"])
+    assert any(span["task_id"].startswith("task_extract") for span in payload["task_spans"])
 
 
 def test_workshop_payload_is_failure_eval_replay_bundle():

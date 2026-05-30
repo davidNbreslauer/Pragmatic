@@ -133,6 +133,10 @@ PYTHONPATH=src python -m thesisgraph doctor
 PYTHONPATH=src python -m thesisgraph doctor --run-openai-live --run-modal-remote
 ```
 
+## Milestone 24
+
+Modal-backed execution is now visible as a broader research fan-out layer. Prepared corpus sources pass through typed `parse_source` tasks before `extract_evidence` tasks, and the same execution backend also runs cross-checking and verifier tasks. Each `ResearchTaskResult` records worker status, duration, source counts, and output counts. The Streamlit app shows a `Research Execution Tasks` table so a demo viewer can see which work ran locally or through Modal.
+
 Run tests:
 
 ```bash

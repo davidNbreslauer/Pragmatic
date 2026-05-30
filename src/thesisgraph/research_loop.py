@@ -10,6 +10,7 @@ from thesisgraph.eval_workshop import build_eval_workshop
 from thesisgraph.execution import (
     build_cross_check_task,
     build_source_extraction_tasks,
+    build_source_parse_tasks,
     execute_research_tasks,
 )
 from thesisgraph.extractors import ExtractionMode
@@ -22,6 +23,7 @@ from thesisgraph.schemas import (
     ResearchQuestion,
     RetrievalScore,
     ResearchState,
+    ResearchTaskResult,
     Source,
     Thesis,
     TraceEvent,
@@ -80,8 +82,45 @@ def run_research_loop(
             },
         )
 
+        parse_tasks = build_source_parse_tasks(retrieved_sources, open_questions)
+        parse_execution = execute_research_tasks(
+            parse_tasks,
+            backend=resolved_backend,
+            fallback_to_local=modal_fallback,
+        )
+        _append_unique(state.research_task_results, parse_execution.results)
+        parsed_sources = [
+            source
+            for result in parse_execution.results
+            if result.status == "succeeded"
+            for source in result.sources
+        ]
+        if not parsed_sources:
+            parsed_sources = retrieved_sources
+        for result in parse_execution.results:
+            _trace_task_result(state, result)
+        _trace(
+            state,
+            "parse",
+            (
+                f"Parsed {len(parsed_sources)} prepared-corpus sources via "
+                f"{parse_execution.backend} backend."
+            ),
+            metadata={
+                "backend": parse_execution.backend,
+                "attempted_backend": parse_execution.attempted_backend,
+                "task_count": str(len(parse_tasks)),
+                "source_count": str(len(retrieved_sources)),
+                **(
+                    {"fallback_reason": parse_execution.fallback_reason}
+                    if parse_execution.fallback_reason
+                    else {}
+                ),
+            },
+        )
+
         extraction_tasks = build_source_extraction_tasks(
-            retrieved_sources,
+            parsed_sources,
             state.assumptions,
             open_questions,
         )
@@ -108,23 +147,12 @@ def run_research_loop(
                 "backend": execution.backend,
                 "attempted_backend": execution.attempted_backend,
                 "task_count": str(len(extraction_tasks)),
-                "source_count": str(len(retrieved_sources)),
+                "source_count": str(len(parsed_sources)),
                 **({"fallback_reason": execution.fallback_reason} if execution.fallback_reason else {}),
             },
         )
         for result in execution.results:
-            _trace(
-                state,
-                "task",
-                f"{result.task_type} {result.task_id} {result.status} via {result.backend}.",
-                metadata={
-                    "task_id": result.task_id,
-                    "task_type": result.task_type,
-                    "backend": result.backend,
-                    "status": result.status,
-                    "source_ids": ",".join(result.source_ids),
-                },
-            )
+            _trace_task_result(state, result)
         _trace(
             state,
             "extract",
@@ -136,7 +164,7 @@ def run_research_loop(
                 "backend": execution.backend,
                 "attempted_backend": execution.attempted_backend,
                 "task_count": str(len(extraction_tasks)),
-                "source_count": str(len(retrieved_sources)),
+                "source_count": str(len(parsed_sources)),
                 **({"fallback_reason": execution.fallback_reason} if execution.fallback_reason else {}),
             },
         )
@@ -160,18 +188,7 @@ def run_research_loop(
         state.evidence_conflicts = []
         _append_unique(state.evidence_conflicts, sorted(conflicts, key=lambda conflict: conflict.id))
         for result in cross_check_execution.results:
-            _trace(
-                state,
-                "task",
-                f"{result.task_type} {result.task_id} {result.status} via {result.backend}.",
-                metadata={
-                    "task_id": result.task_id,
-                    "task_type": result.task_type,
-                    "backend": result.backend,
-                    "status": result.status,
-                    "source_ids": ",".join(result.source_ids),
-                },
-            )
+            _trace_task_result(state, result)
         _trace(
             state,
             "cross_check",
@@ -217,18 +234,7 @@ def run_research_loop(
             for verifier_result in result.verifier_results
         ]
         for result in verifier_execution.results:
-            _trace(
-                state,
-                "task",
-                f"{result.task_type} {result.task_id} {result.status} via {result.backend}.",
-                metadata={
-                    "task_id": result.task_id,
-                    "task_type": result.task_type,
-                    "backend": result.backend,
-                    "status": result.status,
-                    "source_ids": ",".join(result.source_ids),
-                },
-            )
+            _trace_task_result(state, result)
         _trace(
             state,
             "verifier",
@@ -445,6 +451,27 @@ def _top_source_id(scores: list[RetrievalScore]) -> str:
         return ""
     top_score = sorted(scores, key=lambda score: (-score.score, score.source_id))[0]
     return top_score.source_id
+
+
+def _trace_task_result(state: ResearchState, result: ResearchTaskResult) -> None:
+    _trace(
+        state,
+        "task",
+        f"{result.task_type} {result.task_id} {result.status} via {result.backend}.",
+        metadata={
+            "task_id": result.task_id,
+            "task_type": result.task_type,
+            "backend": result.backend,
+            "status": result.status,
+            "source_ids": ",".join(result.source_ids),
+            "duration_ms": result.metadata.get("duration_ms", ""),
+            "worker_status": result.metadata.get("worker_status", ""),
+            "evidence_item_count": str(len(result.evidence_items)),
+            "evidence_conflict_count": str(len(result.evidence_conflicts)),
+            "verifier_result_count": str(len(result.verifier_results)),
+            **({"error": result.error} if result.error else {}),
+        },
+    )
 
 
 def _trace(

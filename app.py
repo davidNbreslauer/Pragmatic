@@ -248,6 +248,7 @@ def main() -> None:
         render_integration_doctor(doctor_result)
     render_history_controls(state)
     render_retrieval_scores(state)
+    render_research_tasks(state)
     if "run_comparison_json" in st.session_state:
         comparison = RunComparison.model_validate_json(st.session_state.run_comparison_json)
         render_run_comparison(comparison)
@@ -382,6 +383,41 @@ def render_retrieval_scores(state: ResearchState) -> None:
                 state.retrieval_scores,
                 key=lambda item: (item.question_id, -item.score, item.source_id),
             )
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+
+def render_research_tasks(state: ResearchState) -> None:
+    st.subheader("Research Execution Tasks")
+    if not state.research_task_results:
+        st.info("No research execution tasks recorded.")
+        return
+
+    remote_count = len([result for result in state.research_task_results if result.backend == "modal"])
+    failed_count = len([result for result in state.research_task_results if result.status == "failed"])
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Tasks", len(state.research_task_results))
+    col2.metric("Modal tasks", remote_count)
+    col3.metric("Failed tasks", failed_count)
+
+    st.dataframe(
+        [
+            {
+                "Task": result.task_id,
+                "Type": result.task_type,
+                "Backend": result.backend,
+                "Status": result.status,
+                "Duration ms": result.metadata.get("duration_ms", ""),
+                "Worker": result.metadata.get("worker_status", ""),
+                "Sources": ", ".join(result.source_ids),
+                "Evidence": len(result.evidence_items),
+                "Conflicts": len(result.evidence_conflicts),
+                "Verifier results": len(result.verifier_results),
+                "Error": result.error or "",
+            }
+            for result in state.research_task_results
         ],
         width="stretch",
         hide_index=True,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from thesisgraph.extractors import extract_source_evidence
@@ -35,6 +36,31 @@ def build_source_extraction_tasks(
             assumption_ids=[assumption.id for assumption in assumptions],
             source=source,
             assumptions=assumptions,
+            metadata={
+                "source_id": source.id,
+                "source_type": source.source_type,
+                "evidence_scope": source.evidence_scope or "",
+                "tags": ",".join(source.tags),
+            },
+        )
+        for index, source in enumerate(sorted(sources, key=lambda item: item.id), start=1)
+    ]
+
+
+def build_source_parse_tasks(
+    sources: list[Source],
+    questions: list[ResearchQuestion],
+) -> list[ResearchTask]:
+    question_ids_by_source = {
+        source.id: [question.id for question in questions]
+        for source in sources
+    }
+    return [
+        ResearchTask(
+            id=f"task_parse_{index:03d}_{source.id}",
+            task_type="parse_source",
+            question_ids=question_ids_by_source[source.id],
+            source=source,
             metadata={
                 "source_id": source.id,
                 "source_type": source.source_type,
@@ -129,19 +155,11 @@ def run_research_task_local(
     *,
     backend: ExecutionBackend = "local",
 ) -> ResearchTaskResult:
+    started = time.perf_counter()
     try:
-        if task.task_type == "retrieve_source":
-            return _retrieve_source(task, backend)
-        if task.task_type == "parse_source":
-            return _parse_source(task, backend)
-        if task.task_type == "extract_evidence":
-            return _extract_evidence(task, backend)
-        if task.task_type == "cross_check":
-            return _cross_check(task, backend)
-        if task.task_type == "verify_decisive_test":
-            return _verify_decisive_test(task, backend)
+        result = _run_research_task_inner(task, backend)
     except Exception as exc:
-        return ResearchTaskResult(
+        result = ResearchTaskResult(
             task_id=task.id,
             task_type=task.task_type,
             backend=backend,
@@ -149,7 +167,23 @@ def run_research_task_local(
             source_ids=_task_source_ids(task),
             error=f"{type(exc).__name__}: {exc}",
         )
+    return _with_task_runtime_metadata(result, task, started)
 
+
+def _run_research_task_inner(
+    task: ResearchTask,
+    backend: ExecutionBackend,
+) -> ResearchTaskResult:
+    if task.task_type == "retrieve_source":
+        return _retrieve_source(task, backend)
+    if task.task_type == "parse_source":
+        return _parse_source(task, backend)
+    if task.task_type == "extract_evidence":
+        return _extract_evidence(task, backend)
+    if task.task_type == "cross_check":
+        return _cross_check(task, backend)
+    if task.task_type == "verify_decisive_test":
+        return _verify_decisive_test(task, backend)
     return ResearchTaskResult(
         task_id=task.id,
         task_type=task.task_type,
@@ -158,6 +192,24 @@ def run_research_task_local(
         source_ids=_task_source_ids(task),
         metadata={"reason": "unsupported task type"},
     )
+
+
+def _with_task_runtime_metadata(
+    result: ResearchTaskResult,
+    task: ResearchTask,
+    started: float,
+) -> ResearchTaskResult:
+    metadata = {
+        **result.metadata,
+        "worker_status": "completed" if result.status == "succeeded" else result.status,
+        "duration_ms": str(max(0, int((time.perf_counter() - started) * 1000))),
+        "input_source_count": str(len(_task_source_ids(task))),
+        "output_source_count": str(len(result.sources)),
+        "evidence_item_count": str(len(result.evidence_items)),
+        "evidence_conflict_count": str(len(result.evidence_conflicts)),
+        "verifier_result_count": str(len(result.verifier_results)),
+    }
+    return result.model_copy(update={"metadata": metadata})
 
 
 def _retrieve_source(task: ResearchTask, backend: ExecutionBackend) -> ResearchTaskResult:

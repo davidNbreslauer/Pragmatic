@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from thesisgraph.belief_update import apply_belief_updates, update_beliefs
@@ -16,12 +17,14 @@ from thesisgraph.execution import (
 from thesisgraph.extractors import ExtractionMode
 from thesisgraph.invalid_leaps import detect_invalid_leaps
 from thesisgraph.raindrop_client import ObservabilityMode, record_research_run
+from thesisgraph.source_search import build_web_corpus
 from thesisgraph.verifiers import build_verifier_tasks
 from thesisgraph.schemas import (
     Assumption,
     ExecutionBackend,
     ResearchQuestion,
     RetrievalScore,
+    SourceAcquisitionMode,
     ResearchState,
     ResearchTaskResult,
     Source,
@@ -41,13 +44,22 @@ def run_research_loop(
     execution_backend: ExecutionBackend | None = None,
     extraction_mode: ExtractionMode | None = None,
     modal_fallback: bool = True,
+    source_mode: SourceAcquisitionMode = "prepared",
+    allow_live_web_search: bool = False,
+    web_search_model: str | None = None,
+    max_web_sources: int = 8,
     observability_mode: ObservabilityMode = "local",
     observability_dir: str | Path | None = None,
     raindrop_fallback: bool = True,
 ) -> ResearchState:
     resolved_backend = _resolve_execution_backend(execution_backend, extraction_mode)
     state = ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery"))
-    _trace(state, "initialize", "Initialized ResearchState from thesis.")
+    _trace(
+        state,
+        "initialize",
+        "Initialized ResearchState from thesis.",
+        metadata={"source_mode": source_mode},
+    )
 
     state.assumptions = decompose_thesis(thesis_text)
     _trace(state, "decompose", f"Generated {len(state.assumptions)} assumptions.")
@@ -55,7 +67,34 @@ def run_research_loop(
     state.research_questions = generate_initial_questions(state)
     _trace(state, "plan", f"Generated {len(state.research_questions)} research questions.")
 
-    corpus = load_corpus(corpus_path)
+    if source_mode == "web":
+        if not allow_live_web_search:
+            raise ValueError("source_mode='web' requires allow_live_web_search=True.")
+        corpus = build_web_corpus(
+            thesis_text,
+            state.research_questions,
+            model=web_search_model,
+            max_sources=max_web_sources,
+        )
+        _trace(
+            state,
+            "web_search",
+            f"Acquired {len(corpus)} live web sources for the thesis.",
+            metadata={
+                "source_mode": source_mode,
+                "allow_live_web_search": str(allow_live_web_search).lower(),
+                "web_search_model": web_search_model or "",
+                "max_web_sources": str(max_web_sources),
+            },
+        )
+    else:
+        corpus = load_corpus(corpus_path)
+        _trace(
+            state,
+            "source_acquisition",
+            f"Loaded {len(corpus)} prepared-corpus sources.",
+            metadata={"source_mode": source_mode},
+        )
 
     for iteration in range(1, max_iterations + 1):
         state.iteration = iteration
@@ -292,6 +331,9 @@ def run_research_loop(
 
 
 def decompose_thesis(thesis_text: str) -> list[Assumption]:
+    if not _is_default_ai_scientist_thesis(thesis_text):
+        return _decompose_generic_thesis(thesis_text)
+
     return [
         Assumption(
             id="A1",
@@ -369,6 +411,12 @@ def decompose_thesis(thesis_text: str) -> list[Assumption]:
 
 
 def generate_initial_questions(state: ResearchState) -> list[ResearchQuestion]:
+    if (
+        not _is_default_ai_scientist_thesis(state.thesis.text)
+        and not _is_demo_ai_scientist_assumptions(state.assumptions)
+    ):
+        return _generate_generic_questions(state)
+
     return [
         ResearchQuestion(
             id="Q1",
@@ -399,6 +447,159 @@ def generate_initial_questions(state: ResearchState) -> list[ResearchQuestion]:
             priority=2,
         ),
     ]
+
+
+def _decompose_generic_thesis(thesis_text: str) -> list[Assumption]:
+    topic = _topic_phrase(thesis_text)
+    return [
+        Assumption(
+            id="A1",
+            text=f"The claim has clear, measurable success criteria for {topic}.",
+            why_it_matters="Without measurable criteria, the system can mistake plausibility for proof.",
+            evidence_needed=[
+                "Standards, target metrics, or domain benchmarks defining success.",
+                "Evidence that the thesis is being evaluated against the right outcome.",
+            ],
+        ),
+        Assumption(
+            id="A2",
+            text=f"The proposed material or approach has the core performance needed for {topic}.",
+            why_it_matters="A real answer needs evidence about the main technical mechanism, not just loose analogy.",
+            evidence_needed=[
+                "Measured performance data from credible sources.",
+                "Comparisons to the performance required by the claimed application.",
+            ],
+        ),
+        Assumption(
+            id="A3",
+            text=f"The evidence is application-level, not only proxy evidence for {topic}.",
+            why_it_matters="Material properties, simulations, or related demonstrations may not transfer to the final use.",
+            evidence_needed=[
+                "Tests in the claimed use case or a close surrogate.",
+                "Clear limits on what proxy measurements can establish.",
+            ],
+        ),
+        Assumption(
+            id="A4",
+            text=f"The approach can be manufactured, scaled, or implemented without losing performance.",
+            why_it_matters="A technically promising mechanism may fail if it cannot be made reliably or at useful scale.",
+            evidence_needed=[
+                "Manufacturing or scale-up evidence.",
+                "Evidence that processing preserves the relevant properties.",
+            ],
+        ),
+        Assumption(
+            id="A5",
+            text=f"System integration constraints are addressed for {topic}.",
+            why_it_matters="Real-world products depend on interfaces, durability, weight, cost, ergonomics, and failure modes.",
+            evidence_needed=[
+                "System-level tests or design constraints.",
+                "Durability, environmental, or integration evidence.",
+            ],
+        ),
+        Assumption(
+            id="A6",
+            text=f"Independent validation or standards-relevant testing supports the claim.",
+            why_it_matters="Strong claims require validation outside a promotional or single-source context.",
+            evidence_needed=[
+                "Independent testing, standards testing, or peer-reviewed validation.",
+                "Evidence that the result satisfies relevant safety or regulatory expectations.",
+            ],
+        ),
+        Assumption(
+            id="A7",
+            text=f"The approach compares favorably with existing alternatives.",
+            why_it_matters="A new approach must be better on at least one meaningful axis, not just interesting.",
+            evidence_needed=[
+                "Head-to-head comparisons with incumbent materials or methods.",
+                "Trade-off analysis across performance, cost, availability, and reliability.",
+            ],
+        ),
+        Assumption(
+            id="A8",
+            text=f"Known limitations and failure modes do not invalidate the practical conclusion.",
+            why_it_matters="A balanced answer must include constraints, negative evidence, and open questions.",
+            evidence_needed=[
+                "Contradictory or limiting sources.",
+                "Failure-mode analysis and unresolved evidence gaps.",
+            ],
+        ),
+    ]
+
+
+def _generate_generic_questions(state: ResearchState) -> list[ResearchQuestion]:
+    thesis = state.thesis.text
+    questions: list[ResearchQuestion] = []
+    for index, assumption in enumerate(state.assumptions, start=1):
+        priority = 1 if assumption.id in {"A2", "A3", "A6", "A8"} else 2
+        questions.append(
+            ResearchQuestion(
+                id=f"Q{index}",
+                assumption_ids=[assumption.id],
+                question=f"What credible evidence bears on this assumption: {assumption.text}",
+                query=_search_query(thesis, assumption),
+                priority=priority,
+            )
+        )
+    return questions
+
+
+def _search_query(thesis: str, assumption: Assumption) -> str:
+    evidence_terms = " ".join(assumption.evidence_needed[:2])
+    tokens = _top_terms(f"{thesis} {assumption.text} {evidence_terms}", limit=12)
+    return " ".join(tokens)
+
+
+def _topic_phrase(thesis_text: str) -> str:
+    text = re.sub(r"[\?\.\!]+$", "", thesis_text.strip())
+    text = re.sub(r"^(can|could|should|does|do|is|are|will|would)\s+", "", text, flags=re.I)
+    return text[:96] or "the thesis"
+
+
+def _top_terms(value: str, *, limit: int) -> list[str]:
+    stopwords = {
+        "about",
+        "against",
+        "approach",
+        "because",
+        "claim",
+        "could",
+        "does",
+        "evidence",
+        "needed",
+        "relevant",
+        "should",
+        "supports",
+        "that",
+        "their",
+        "there",
+        "this",
+        "what",
+        "when",
+        "where",
+        "which",
+        "with",
+        "would",
+    }
+    tokens = [
+        token.lower()
+        for token in re.findall(r"[a-z0-9]+", value)
+        if len(token) > 2 and token.lower() not in stopwords
+    ]
+    deduped: list[str] = []
+    for token in tokens:
+        if token not in deduped:
+            deduped.append(token)
+    return deduped[:limit]
+
+
+def _is_default_ai_scientist_thesis(thesis_text: str) -> bool:
+    normalized = thesis_text.lower()
+    return "graph-based ai scientist" in normalized and "materials discovery" in normalized
+
+
+def _is_demo_ai_scientist_assumptions(assumptions: list[Assumption]) -> bool:
+    return any("graph memory captures" in assumption.text.lower() for assumption in assumptions)
 
 
 def retrieve_sources(questions: list[ResearchQuestion], corpus: list[Source]) -> list[Source]:

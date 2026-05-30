@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from thesisgraph.belief_update import apply_belief_updates, update_beliefs
-from thesisgraph.corpus import load_corpus
+from thesisgraph.corpus import load_corpus, score_corpus_for_questions
 from thesisgraph.decisive_tests import propose_decisive_tests
 from thesisgraph.eval_writer import generate_evals_from_failures
 from thesisgraph.eval_workshop import build_eval_workshop
@@ -32,6 +32,7 @@ from thesisgraph.research_loop import (
     run_research_loop,
     score_retrieval,
 )
+from thesisgraph.source_search import build_web_corpus
 from thesisgraph.schemas import (
     AgentRunRecord,
     AgentRunStep,
@@ -48,6 +49,7 @@ from thesisgraph.schemas import (
     ResearchBatchResult,
     ResearchQuestion,
     RetrievalScore,
+    SourceAcquisitionMode,
     ResearchState,
     Source,
     Thesis,
@@ -112,6 +114,10 @@ class ResearchManager:
         execution_backend: ExecutionBackend | None = None,
         extraction_mode: ExtractionMode = "local",
         modal_fallback: bool = True,
+        source_mode: SourceAcquisitionMode = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str | None = None,
+        max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "local",
     ) -> ResearchState:
         return run_research_loop(
@@ -121,6 +127,10 @@ class ResearchManager:
             execution_backend=execution_backend,
             extraction_mode=extraction_mode,
             modal_fallback=modal_fallback,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
             observability_mode=observability_mode,
         )
 
@@ -132,6 +142,10 @@ class ResearchManager:
         corpus_path: str | Path | None = None,
         execution_backend: ExecutionBackend | None = None,
         extraction_mode: ExtractionMode = "local",
+        source_mode: SourceAcquisitionMode = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str | None = None,
+        max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "local",
     ) -> ResearchState:
         _require_agents_sdk()
@@ -148,6 +162,7 @@ class ResearchManager:
         corpus_path_value = str(corpus_path) if corpus_path else ""
         execution_backend_value = execution_backend or ("modal" if extraction_mode == "modal" else "")
         resolved_backend = _validate_execution_backend(execution_backend_value)
+        search_model_value = web_search_model or self.model or ""
 
         assumptions_json = _invoke_specialist_tool(
             tools,
@@ -199,8 +214,13 @@ class ResearchManager:
                 arguments={
                     "research_questions_json": open_questions_json,
                     "corpus_path": corpus_path_value,
+                    "thesis_text": thesis_text,
+                    "source_mode": source_mode,
+                    "allow_live_web_search": allow_live_web_search,
+                    "web_search_model": search_model_value,
+                    "max_web_sources": max_web_sources,
                 },
-                summary="Retrieved prepared-corpus sources for open questions.",
+                summary="Retrieved sources for open questions.",
             )
             retrieved_sources = [
                 Source.model_validate(source)
@@ -216,8 +236,9 @@ class ResearchManager:
                 arguments={
                     "research_questions_json": open_questions_json,
                     "corpus_path": corpus_path_value,
+                    "sources_json": sources_json,
                 },
-                summary="Scored prepared-corpus retrieval matches.",
+                summary="Scored retrieval matches.",
             )
             retrieval_scores = [
                 RetrievalScore.model_validate(score)
@@ -439,6 +460,10 @@ class ResearchManager:
         corpus_path: str | Path | None = None,
         execution_backend: ExecutionBackend | None = None,
         extraction_mode: ExtractionMode = "local",
+        source_mode: SourceAcquisitionMode = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str | None = None,
+        max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
     ) -> ResearchState:
@@ -449,6 +474,10 @@ class ResearchManager:
                 corpus_path=corpus_path,
                 execution_backend=execution_backend,
                 extraction_mode=extraction_mode,
+                source_mode=source_mode,
+                allow_live_web_search=allow_live_web_search,
+                web_search_model=web_search_model,
+                max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
                 allow_live_sdk=allow_live_sdk,
             )
@@ -462,6 +491,10 @@ class ResearchManager:
         corpus_path: str | Path | None = None,
         execution_backend: ExecutionBackend | None = None,
         extraction_mode: ExtractionMode = "local",
+        source_mode: SourceAcquisitionMode = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str | None = None,
+        max_web_sources: int = 8,
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
     ) -> ResearchState:
@@ -470,6 +503,12 @@ class ResearchManager:
         agent = self.build_agent()
         execution_backend_value = execution_backend or ""
         corpus_path_value = str(corpus_path) if corpus_path else ""
+        search_policy = (
+            "Use retrieve_sources_tool with source_mode='web' when acquiring sources. "
+            "Live web search is explicitly allowed for this run. "
+            if source_mode == "web" and allow_live_web_search
+            else "Do not perform live web search or add sources outside the prepared corpus. "
+        )
         prompt = (
             "Run the ThesisGraph research loop for this thesis using specialist tools. "
             "Prefer this order: decompose_thesis_tool, plan_questions_tool, "
@@ -480,12 +519,16 @@ class ResearchManager:
             "record_observability_tool. "
             "If any invalid_leaps are present, generated_evals must be non-empty. "
             "If generated_evals are missing, call generate_evals_from_failures_tool before returning. "
-            "Do not perform live web search or add sources outside the prepared corpus. "
+            f"{search_policy}"
             "Return the final schema-valid ResearchState object.\n\n"
             f"max_iterations: {max_iterations}\n"
             f"corpus_path: {corpus_path_value}\n"
             f"execution_backend: {execution_backend_value}\n"
             f"extraction_mode: {extraction_mode}\n"
+            f"source_mode: {source_mode}\n"
+            f"allow_live_web_search: {allow_live_web_search}\n"
+            f"web_search_model: {web_search_model or self.model or ''}\n"
+            f"max_web_sources: {max_web_sources}\n"
             f"observability_mode: {observability_mode}\n\n"
             f"Thesis: {thesis_text}"
         )
@@ -511,6 +554,10 @@ class ResearchManager:
         state = _finalize_live_research_state(
             state,
             execution_backend=_validate_execution_backend(execution_backend_value),
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model or self.model,
+            max_web_sources=max_web_sources,
             observability_mode=observability_mode,
         )
         _append_agent_trace(
@@ -579,27 +626,53 @@ if function_tool is not None:
         return _to_json([question.model_dump() for question in questions])
 
     @function_tool
-    def retrieve_sources_tool(research_questions_json: str, corpus_path: str = "") -> str:
-        """Retrieve local corpus sources for research questions and return Source JSON."""
+    def retrieve_sources_tool(
+        research_questions_json: str,
+        corpus_path: str = "",
+        thesis_text: str = "",
+        source_mode: str = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str = "",
+        max_web_sources: int = 8,
+    ) -> str:
+        """Retrieve prepared or live-web sources for research questions and return Source JSON."""
 
         questions = [
             ResearchQuestion.model_validate(question)
             for question in json.loads(research_questions_json)
         ]
-        corpus = load_corpus(corpus_path or None)
+        if _validate_source_mode(source_mode) == "web":
+            if not allow_live_web_search:
+                raise ValueError("source_mode='web' requires allow_live_web_search=True.")
+            corpus = build_web_corpus(
+                thesis_text,
+                questions,
+                model=web_search_model or None,
+                max_sources=max_web_sources,
+            )
+        else:
+            corpus = load_corpus(corpus_path or None)
         sources = retrieve_sources(questions, corpus)
         return _to_json([source.model_dump() for source in sources])
 
     @function_tool
-    def score_retrieval_tool(research_questions_json: str, corpus_path: str = "") -> str:
-        """Score prepared-corpus retrieval matches and return RetrievalScore JSON."""
+    def score_retrieval_tool(
+        research_questions_json: str,
+        corpus_path: str = "",
+        sources_json: str = "",
+    ) -> str:
+        """Score retrieval matches and return RetrievalScore JSON."""
 
         questions = [
             ResearchQuestion.model_validate(question)
             for question in json.loads(research_questions_json)
         ]
-        corpus = load_corpus(corpus_path or None)
-        scores = score_retrieval(questions, corpus)
+        if sources_json:
+            corpus = [Source.model_validate(source) for source in json.loads(sources_json)]
+            scores = score_corpus_for_questions(questions, corpus)
+        else:
+            corpus = load_corpus(corpus_path or None)
+            scores = score_retrieval(questions, corpus)
         return _to_json([score.model_dump() for score in scores])
 
     @function_tool
@@ -801,6 +874,10 @@ if function_tool is not None:
         extraction_mode: str = "local",
         execution_backend: str = "",
         observability_mode: str = "local",
+        source_mode: str = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str = "",
+        max_web_sources: int = 8,
     ) -> str:
         """Run the deterministic ThesisGraph loop and return ResearchState JSON."""
 
@@ -810,6 +887,10 @@ if function_tool is not None:
             corpus_path=corpus_path or None,
             execution_backend=_validate_execution_backend(execution_backend) if execution_backend else None,
             extraction_mode=_validate_extraction_mode(extraction_mode),
+            source_mode=_validate_source_mode(source_mode),
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model or None,
+            max_web_sources=max_web_sources,
             observability_mode=_validate_observability_mode(observability_mode),
         )
         return state.model_dump_json()
@@ -933,8 +1014,96 @@ def _finalize_live_research_state(
     *,
     execution_backend: ExecutionBackend,
     observability_mode: ObservabilityMode,
+    source_mode: SourceAcquisitionMode = "prepared",
+    allow_live_web_search: bool = False,
+    web_search_model: str | None = None,
+    max_web_sources: int = 8,
 ) -> ResearchState:
     """Close gaps left by a live model while preserving its schema-valid state."""
+
+    if not state.assumptions:
+        state.assumptions = decompose_thesis(state.thesis.text)
+        _append_agent_trace(
+            state,
+            "Finalized live state with deterministic assumption decomposition.",
+            metadata={"assumptions": str(len(state.assumptions))},
+        )
+
+    if not state.research_questions:
+        state.research_questions = generate_initial_questions(state)
+        _append_agent_trace(
+            state,
+            "Finalized live state with deterministic research questions.",
+            metadata={"questions": str(len(state.research_questions))},
+        )
+
+    if not state.sources:
+        if source_mode == "web":
+            if not allow_live_web_search:
+                raise ValueError("source_mode='web' requires allow_live_web_search=True.")
+            sources = build_web_corpus(
+                state.thesis.text,
+                state.research_questions,
+                model=web_search_model,
+                max_sources=max_web_sources,
+            )
+        else:
+            sources = retrieve_sources(state.research_questions, load_corpus(None))
+        _append_unique(state.sources, sources)
+        _append_agent_trace(
+            state,
+            "Finalized live state with source acquisition.",
+            metadata={
+                "source_mode": source_mode,
+                "sources": str(len(state.sources)),
+            },
+        )
+
+    if state.research_questions and state.sources and not state.retrieval_scores:
+        state.retrieval_scores = score_corpus_for_questions(state.research_questions, state.sources)
+
+    if state.sources and state.assumptions and not state.evidence_items:
+        parse_tasks = build_source_parse_tasks(state.sources, state.research_questions)
+        parse_execution = execute_research_tasks(
+            parse_tasks,
+            backend=execution_backend,
+            fallback_to_local=True,
+        )
+        _append_unique(state.research_task_results, parse_execution.results)
+        parsed_sources = [
+            source
+            for result in parse_execution.results
+            if result.status == "succeeded"
+            for source in result.sources
+        ] or state.sources
+        extraction_tasks = build_source_extraction_tasks(
+            parsed_sources,
+            state.assumptions,
+            state.research_questions,
+        )
+        execution = execute_research_tasks(
+            extraction_tasks,
+            backend=execution_backend,
+            fallback_to_local=True,
+        )
+        _append_unique(state.research_task_results, execution.results)
+        _append_unique(
+            state.evidence_items,
+            [
+                item
+                for result in execution.results
+                for item in result.evidence_items
+            ],
+        )
+        _append_agent_trace(
+            state,
+            "Finalized live state with typed evidence extraction.",
+            metadata={
+                "backend": execution.backend,
+                "attempted_backend": execution.attempted_backend,
+                "evidence_items": str(len(state.evidence_items)),
+            },
+        )
 
     if state.sources and state.evidence_items and not state.evidence_conflicts:
         task = build_cross_check_task(state.sources, state.evidence_items, state.assumptions)
@@ -1069,6 +1238,12 @@ def _validate_execution_backend(value: str) -> ExecutionBackend:
     if value == "modal":
         return "modal"
     return "local"
+
+
+def _validate_source_mode(value: str) -> SourceAcquisitionMode:
+    if value == "web":
+        return "web"
+    return "prepared"
 
 
 def _validate_observability_mode(value: str) -> ObservabilityMode:

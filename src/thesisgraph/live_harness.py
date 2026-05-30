@@ -22,6 +22,7 @@ from thesisgraph.schemas import (
     LiveRunResult,
     LiveRunStatus,
     ResearchState,
+    SourceAcquisitionMode,
 )
 
 
@@ -40,6 +41,10 @@ def run_live_harness_sync(
     corpus_path: str | Path | None = None,
     execution_backend: ExecutionBackend = "local",
     extraction_mode: ExtractionMode = "local",
+    source_mode: SourceAcquisitionMode = "prepared",
+    allow_live_web_search: bool = False,
+    web_search_model: str | None = None,
+    max_web_sources: int = 8,
     observability_mode: ObservabilityMode = "local",
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
@@ -60,6 +65,10 @@ def run_live_harness_sync(
                 corpus_path=corpus_path,
                 execution_backend=execution_backend,
                 extraction_mode=extraction_mode,
+                source_mode=source_mode,
+                allow_live_web_search=allow_live_web_search,
+                web_search_model=web_search_model,
+                max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
                 output_dir=output_dir,
                 write_artifact=write_artifact,
@@ -81,6 +90,10 @@ async def run_live_harness(
     corpus_path: str | Path | None = None,
     execution_backend: ExecutionBackend = "local",
     extraction_mode: ExtractionMode = "local",
+    source_mode: SourceAcquisitionMode = "prepared",
+    allow_live_web_search: bool = False,
+    web_search_model: str | None = None,
+    max_web_sources: int = 8,
     observability_mode: ObservabilityMode = "local",
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
@@ -89,8 +102,11 @@ async def run_live_harness(
     guardrails = LiveRunGuardrails(
         mode="live" if mode == "live" else "dry_run",
         allow_live_sdk=allow_live_sdk,
-        prepared_corpus_only=True,
-        allow_live_web_search=False,
+        source_mode=source_mode,
+        prepared_corpus_only=source_mode == "prepared",
+        allow_live_web_search=allow_live_web_search,
+        web_search_model=web_search_model,
+        max_web_sources=max_web_sources,
         max_turns=max_turns,
         timeout_seconds=timeout_seconds,
         max_iterations=max_iterations,
@@ -157,6 +173,10 @@ async def run_live_harness(
                 corpus_path=corpus_path,
                 execution_backend=execution_backend,
                 extraction_mode=extraction_mode,
+                source_mode=source_mode,
+                allow_live_web_search=allow_live_web_search,
+                web_search_model=web_search_model,
+                max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
                 allow_live_sdk=True,
             ),
@@ -230,15 +250,22 @@ def build_live_run_proof(
     )
     workshop_recorded = state.observability is not None and state.observability.status == "recorded"
     final_output_validated = bool(state.agent_run and state.agent_run.final_output_validated)
+    source_policy_ok = guardrails.prepared_corpus_only or (
+        guardrails.source_mode == "web" and guardrails.allow_live_web_search
+    )
     demo_ready = (
         final_output_validated
-        and guardrails.prepared_corpus_only
+        and source_policy_ok
+        and bool(state.sources)
+        and bool(state.evidence_items)
         and (guardrails.execution_backend != "modal" or modal_task_count > 0)
         and (guardrails.observability_backend == "off" or workshop_recorded)
         and bool(state.generated_evals)
     )
     summary = (
-        f"validated={final_output_validated}; modal_tasks={modal_task_count}; "
+        f"validated={final_output_validated}; source_mode={guardrails.source_mode}; "
+        f"sources={len(state.sources)}; evidence={len(state.evidence_items)}; "
+        f"modal_tasks={modal_task_count}; "
         f"workshop_recorded={workshop_recorded}; evals={len(state.generated_evals)}."
     )
     return LiveRunProof(

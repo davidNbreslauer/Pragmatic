@@ -173,6 +173,22 @@ PYTHONPATH=src python -m thesisgraph demo-smoke --fail-on-fail
 
 The hackathon demo script is tracked in `docs/hackathon_demo_script.md`, including setup commands, a three-minute run order, and backup artifact paths for live-service failures.
 
+## Milestone 31
+
+Arbitrary-thesis research now has a real-source path. Non-demo theses are decomposed into generic evidence assumptions, the OpenAI web-search adapter can normalize live search results into `Source` records, generic extraction works for arbitrary source IDs, and the skeptic/verifier layers generate failure/eval artifacts for proxy-to-application leaps. The Streamlit app exposes `Evidence search`, `Allow live web search`, web-search model, and max-source controls, and the Sources panel lets the run output be inspected before evidence, belief updates, and Raindrop Workshop traces.
+
+```bash
+PYTHONPATH=src python -m thesisgraph live-run-harness \
+  --live \
+  --allow-live-sdk \
+  --source-mode web \
+  --allow-live-web-search \
+  --thesis "Can spider silk make a bullet proof vest?" \
+  --execution-backend modal \
+  --observability local \
+  --require-demo-proof
+```
+
 Run tests:
 
 ```bash

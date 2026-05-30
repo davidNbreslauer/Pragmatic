@@ -133,6 +133,96 @@ def detect_invalid_leaps(state: ResearchState) -> list[InvalidLeap]:
             )
         )
 
+    if not _is_demo_ai_scientist_state(state):
+        leaps.extend(_generic_invalid_leaps(state))
+
+    return leaps
+
+
+def _generic_invalid_leaps(state: ResearchState) -> list[InvalidLeap]:
+    leaps: list[InvalidLeap] = []
+    proxy_or_indirect = [
+        item
+        for item in state.evidence_items
+        if item.evidence_type in {"proxy", "indirect", "anecdotal"}
+    ]
+    direct_items = [item for item in state.evidence_items if item.evidence_type == "direct"]
+    contradictory_items = [
+        item for item in state.evidence_items if item.evidence_type == "contradictory"
+    ]
+
+    if proxy_or_indirect:
+        affected = sorted(
+            {
+                assumption_id
+                for item in proxy_or_indirect
+                for assumption_id in item.assumption_ids
+            }
+        )
+        leaps.append(
+            InvalidLeap(
+                id="leap_proxy_to_application_ready",
+                leap="Property/proxy evidence -> application-ready conclusion.",
+                why_invalid=(
+                    "Evidence about material properties, related mechanisms, or non-final demonstrations "
+                    "does not by itself prove the claimed real-world application works."
+                ),
+                source_ids=sorted({item.source_id for item in proxy_or_indirect}),
+                affected_assumption_ids=affected,
+                suggested_followup_question=(
+                    "Which sources test the final application or a standards-relevant surrogate directly?"
+                ),
+            )
+        )
+
+    standards_assumptions = [
+        assumption.id
+        for assumption in state.assumptions
+        if any(
+            token in assumption.text.lower()
+            for token in ["standard", "safety", "validation", "independent", "testing"]
+        )
+    ]
+    if standards_assumptions and not direct_items:
+        leaps.append(
+            InvalidLeap(
+                id="leap_no_direct_validation_to_confidence",
+                leap="No direct validation evidence -> confident practical answer.",
+                why_invalid=(
+                    "A practical recommendation should remain uncertain without independent, "
+                    "application-level, or standards-relevant validation."
+                ),
+                source_ids=sorted({item.source_id for item in state.evidence_items}),
+                affected_assumption_ids=standards_assumptions,
+                suggested_followup_question=(
+                    "What independent validation or standards test directly supports the claim?"
+                ),
+            )
+        )
+
+    if contradictory_items:
+        leaps.append(
+            InvalidLeap(
+                id="leap_limitations_to_unqualified_yes",
+                leap="Known limitations -> unqualified yes/no answer.",
+                why_invalid=(
+                    "Contradictory or limiting evidence must be carried into the final belief graph "
+                    "instead of being averaged away."
+                ),
+                source_ids=sorted({item.source_id for item in contradictory_items}),
+                affected_assumption_ids=sorted(
+                    {
+                        assumption_id
+                        for item in contradictory_items
+                        for assumption_id in item.assumption_ids
+                    }
+                ),
+                suggested_followup_question=(
+                    "Which limitations change the answer, and which decisive evidence would resolve them?"
+                ),
+            )
+        )
+
     return leaps
 
 
@@ -141,3 +231,7 @@ def _source_type(state: ResearchState, source_id: str) -> str | None:
         if source.id == source_id:
             return source.source_type
     return None
+
+
+def _is_demo_ai_scientist_state(state: ResearchState) -> bool:
+    return any("graph memory captures" in assumption.text.lower() for assumption in state.assumptions)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from thesisgraph.extractors import extract_source_evidence
@@ -136,7 +138,7 @@ class ModalResearchExecutor:
             run_research_tasks_with_modal,
         )
 
-        results = run_research_tasks_with_modal(tasks)
+        results = _run_modal_batch_safely(tasks, run_research_tasks_with_modal)
         return ResearchBatchResult(
             backend=self.backend,
             attempted_backend=self.backend,
@@ -168,6 +170,15 @@ def run_research_task_local(
             error=f"{type(exc).__name__}: {exc}",
         )
     return _with_task_runtime_metadata(result, task, started)
+
+
+def _run_modal_batch_safely(tasks, runner):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return runner(tasks)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(runner, tasks).result()
 
 
 def _run_research_task_inner(

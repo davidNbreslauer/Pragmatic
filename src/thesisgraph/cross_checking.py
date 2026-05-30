@@ -13,6 +13,8 @@ def detect_evidence_conflicts(
     conflicts.extend(_prospective_validation_conflicts(source_by_id, evidence_items))
     conflicts.extend(_benchmark_cluster_conflicts(source_by_id, evidence_items))
     conflicts.extend(_weak_baseline_conflicts(source_by_id, evidence_items))
+    if not _is_demo_source_set(sources):
+        conflicts.extend(_generic_conflicts(source_by_id, evidence_items))
     return conflicts
 
 
@@ -157,3 +159,80 @@ def _weak_baseline_conflicts(
             ),
         )
     ]
+
+
+def _generic_conflicts(
+    source_by_id: dict[str, Source],
+    evidence_items: list[EvidenceItem],
+) -> list[EvidenceConflict]:
+    conflicts: list[EvidenceConflict] = []
+    assumption_ids = sorted(
+        {
+            assumption_id
+            for item in evidence_items
+            for assumption_id in item.assumption_ids
+        }
+    )
+    for assumption_id in assumption_ids:
+        items = [item for item in evidence_items if assumption_id in item.assumption_ids]
+        supportive = [
+            item
+            for item in items
+            if item.evidence_type in {"direct", "indirect", "proxy", "anecdotal"}
+        ]
+        contradictory = [item for item in items if item.evidence_type == "contradictory"]
+        if supportive and contradictory:
+            all_items = supportive + contradictory
+            conflicts.append(
+                EvidenceConflict(
+                    id=f"conflict_{assumption_id.lower()}_support_vs_limitation",
+                    conflict_type="contradiction",
+                    severity="high",
+                    summary=(
+                        "Supportive evidence and limiting or contradictory evidence both attach "
+                        f"to {assumption_id}; the answer should preserve this uncertainty."
+                    ),
+                    source_ids=sorted({item.source_id for item in all_items}),
+                    evidence_item_ids=sorted({item.id for item in all_items}),
+                    affected_assumption_ids=[assumption_id],
+                    suggested_action=(
+                        "Separate what is directly tested from what remains a limitation or open question."
+                    ),
+                )
+            )
+
+        source_types = {
+            source_by_id[item.source_id].source_type
+            for item in supportive
+            if source_by_id.get(item.source_id) is not None
+        }
+        has_direct_independent = any(
+            item.evidence_type == "direct"
+            and source_by_id.get(item.source_id) is not None
+            and source_by_id[item.source_id].source_type
+            in {"paper", "review", "standard", "government", "dataset"}
+            for item in supportive
+        )
+        if source_types & {"company_claim", "blog_post", "news", "unknown"} and not has_direct_independent:
+            conflicts.append(
+                EvidenceConflict(
+                    id=f"conflict_{assumption_id.lower()}_weak_source_mix",
+                    conflict_type="source_type_imbalance",
+                    severity="medium",
+                    summary=(
+                        f"{assumption_id} is supported mainly by weaker source types without "
+                        "independent direct validation."
+                    ),
+                    source_ids=sorted({item.source_id for item in supportive}),
+                    evidence_item_ids=sorted({item.id for item in supportive}),
+                    affected_assumption_ids=[assumption_id],
+                    suggested_action=(
+                        "Require stronger independent or standards-relevant sources before increasing confidence."
+                    ),
+                )
+            )
+    return conflicts
+
+
+def _is_demo_source_set(sources: list[Source]) -> bool:
+    return any(source.id.startswith("source_") and "AI" in source.title for source in sources)

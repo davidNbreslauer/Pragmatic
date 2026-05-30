@@ -4,6 +4,28 @@ from thesisgraph.schemas import DecisiveTest, ResearchState
 
 
 def propose_decisive_tests(state: ResearchState) -> list[DecisiveTest]:
+    if not any("graph memory captures" in assumption.text.lower() for assumption in state.assumptions):
+        return [
+            DecisiveTest(
+                id="test_001",
+                test=(
+                    "Find independent, application-level evidence that directly tests the thesis "
+                    "against the relevant success criteria."
+                ),
+                would_resolve=[assumption.id for assumption in state.assumptions],
+                success_criteria=[
+                    "At least one credible source defines the application-level success criteria.",
+                    "At least one independent source directly tests the claimed application or a close standards-relevant surrogate.",
+                    "The evidence includes limitations or failure modes rather than only promotional support.",
+                    "The result is compared against existing alternatives or incumbent practice.",
+                ],
+                why_decisive=(
+                    "It distinguishes a practically supported conclusion from proxy-property evidence, "
+                    "analogy, or unvalidated claims."
+                ),
+            )
+        ]
+
     return [
         DecisiveTest(
             id="test_001",
@@ -24,4 +46,3 @@ def propose_decisive_tests(state: ResearchState) -> list[DecisiveTest]:
             ),
         )
     ]
-

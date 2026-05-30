@@ -84,6 +84,39 @@ def test_live_harness_success_writes_schema_valid_artifact(monkeypatch, tmp_path
     assert payload["proof"]["demo_ready"] is True
 
 
+def test_live_harness_passes_live_web_search_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    captured = {}
+
+    async def fake_run_live(self, *args, **kwargs):
+        del self, args
+        captured.update(kwargs)
+        return ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+
+    monkeypatch.setattr(ResearchManager, "run_live", fake_run_live)
+
+    result = run_live_harness_sync(
+        "Can spider silk make a bullet proof vest?",
+        mode="live",
+        allow_live_sdk=True,
+        source_mode="web",
+        allow_live_web_search=True,
+        web_search_model="test-search-model",
+        max_web_sources=5,
+        observability_mode="off",
+        output_dir=tmp_path,
+    )
+
+    assert result.status == "succeeded"
+    assert result.guardrails.source_mode == "web"
+    assert result.guardrails.prepared_corpus_only is False
+    assert result.guardrails.allow_live_web_search is True
+    assert captured["source_mode"] == "web"
+    assert captured["allow_live_web_search"] is True
+    assert captured["web_search_model"] == "test-search-model"
+    assert captured["max_web_sources"] == 5
+
+
 def test_live_harness_can_require_demo_proof(monkeypatch, tmp_path):
     from thesisgraph import agents as agents_module
 

@@ -91,7 +91,11 @@ def score_source_for_question(
         else 0.0
     )
     tag_overlap = len(resolved_query_terms & _tokenize(" ".join(source.tags)))
-    source_type_bonus = 0.05 if source.source_type in {"paper", "benchmark", "review"} else 0.0
+    source_type_bonus = (
+        0.05
+        if source.source_type in {"paper", "benchmark", "review", "standard", "government"}
+        else 0.0
+    )
     score = min(1.0, coverage + (0.03 * tag_overlap) + source_type_bonus)
     rationale = _score_rationale(score, matched_terms, source)
     return RetrievalScore(

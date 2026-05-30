@@ -41,6 +41,11 @@ DEFAULT_DEMO_SCENARIO_ID = "live_full"
 DEFAULT_LIVE_SDK_MODEL = "gpt-5-mini"
 ORCHESTRATION_OPTIONS = ["deterministic", "scripted_sdk", "live_sdk"]
 EXECUTION_OPTIONS = ["local", "modal"]
+SOURCE_OPTIONS = ["prepared", "web"]
+SOURCE_LABELS = {
+    "prepared": "Prepared corpus",
+    "web": "Live web search",
+}
 OBSERVABILITY_OPTIONS = ["local", "raindrop", "off"]
 OBSERVABILITY_LABELS = {
     "local": "Raindrop Workshop (local)",
@@ -73,6 +78,26 @@ def main() -> None:
         st.button("Apply Scenario", width="stretch", on_click=_apply_selected_demo_scenario)
         thesis_text = st.text_area("Thesis", height=140, key="thesis_text")
         max_iterations = st.slider("Iterations", min_value=1, max_value=3, key="max_iterations")
+        source_mode = st.selectbox(
+            "Evidence search",
+            options=SOURCE_OPTIONS,
+            index=SOURCE_OPTIONS.index(st.session_state.source_mode),
+            key="source_mode",
+            format_func=lambda option: SOURCE_LABELS[option],
+        )
+        allow_live_web_search = st.checkbox(
+            "Allow live web search",
+            key="allow_live_web_search",
+            disabled=source_mode != "web",
+        )
+        web_search_model = st.text_input("Web search model", key="web_search_model")
+        max_web_sources = st.slider(
+            "Max web sources",
+            min_value=1,
+            max_value=12,
+            key="max_web_sources",
+            disabled=source_mode != "web",
+        )
         orchestration = st.selectbox(
             "Orchestration",
             options=ORCHESTRATION_OPTIONS,
@@ -208,6 +233,10 @@ def main() -> None:
                         timeout_seconds=float(live_sdk_timeout),
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
+                        source_mode=source_mode,
+                        allow_live_web_search=allow_live_web_search,
+                        web_search_model=web_search_model or live_sdk_model or None,
+                        max_web_sources=max_web_sources,
                         observability_mode=observability_mode,
                         require_demo_proof=live_sdk_require_demo_proof,
                     )
@@ -217,10 +246,17 @@ def main() -> None:
                 else:
                     if live_result.status in {"blocked", "failed", "timed_out"}:
                         st.error(live_result.message)
+                    fallback_source_mode = "prepared" if live_result.mode == "dry_run" else source_mode
                     state = manager.run_deterministic(
                         thesis_text,
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
+                        source_mode=fallback_source_mode,
+                        allow_live_web_search=(
+                            allow_live_web_search and fallback_source_mode == "web"
+                        ),
+                        web_search_model=web_search_model or live_sdk_model or None,
+                        max_web_sources=max_web_sources,
                         observability_mode="off",
                     )
                 st.session_state.current_run_source = _live_run_source_label(live_result)
@@ -229,6 +265,10 @@ def main() -> None:
                     thesis_text,
                     max_iterations=max_iterations,
                     execution_backend=execution_backend,
+                    source_mode=source_mode,
+                    allow_live_web_search=allow_live_web_search,
+                    web_search_model=web_search_model or live_sdk_model or None,
+                    max_web_sources=max_web_sources,
                     observability_mode=observability_mode,
                 )
                 st.session_state.current_run_source = f"Scripted SDK run: {selected_scenario.name}"
@@ -239,6 +279,10 @@ def main() -> None:
                     thesis_text,
                     max_iterations=max_iterations,
                     execution_backend=execution_backend,
+                    source_mode=source_mode,
+                    allow_live_web_search=allow_live_web_search,
+                    web_search_model=web_search_model or None,
+                    max_web_sources=max_web_sources,
                     observability_mode=observability_mode,
                 )
                 st.session_state.current_run_source = f"Deterministic run: {selected_scenario.name}"
@@ -327,6 +371,7 @@ def main() -> None:
         st.session_state.run_comparison_json = comparison.model_dump_json()
 
     render_summary(state)
+    render_answer_summary(state)
     render_demo_cockpit(state, selected_scenario)
     render_orchestration_flow(state, selected_scenario)
     if "integration_doctor_json" in st.session_state:
@@ -342,6 +387,7 @@ def main() -> None:
         render_demo_smoke(demo_smoke)
     render_agent_run(state)
     render_research_tasks(state)
+    render_sources(state)
     render_eval_workshop(state)
     if "replay_result_json" in st.session_state:
         replay = ReplayResult.model_validate_json(st.session_state.replay_result_json)
@@ -382,6 +428,43 @@ def render_summary(state: ResearchState) -> None:
     col4.metric("Invalid Leaps", len(state.invalid_leaps))
     col5.metric("Verifier Results", len(state.verifier_results))
     col6.metric("Generated Evals", len(state.generated_evals))
+
+
+def render_answer_summary(state: ResearchState) -> None:
+    st.subheader("Answer")
+    direct_count = len([item for item in state.evidence_items if item.evidence_type == "direct"])
+    limiting_count = len(
+        [item for item in state.evidence_items if item.evidence_type == "contradictory"]
+    )
+    confident_assumptions = [
+        assumption
+        for assumption in state.assumptions
+        if assumption.support_level in {"strong", "moderate"}
+    ]
+    unresolved_assumptions = [
+        assumption
+        for assumption in state.assumptions
+        if assumption.support_level in {"unknown", "unsupported", "contradicted", "weak"}
+    ]
+    if state.invalid_leaps or limiting_count or len(confident_assumptions) < len(state.assumptions):
+        headline = "Provisional answer: not enough evidence for a confident yes."
+    elif direct_count:
+        headline = "Provisional answer: the evidence supports the thesis, with stated limits."
+    else:
+        headline = "Provisional answer: evidence is present, but it is mostly indirect."
+
+    st.markdown(f"**{headline}**")
+    st.caption(
+        (
+            f"{direct_count} direct items, {limiting_count} limiting items, "
+            f"{len(state.invalid_leaps)} invalid inference leaps, "
+            f"{len(unresolved_assumptions)} unresolved assumptions."
+        )
+    )
+    if state.invalid_leaps:
+        st.write(state.invalid_leaps[0].why_invalid)
+    elif unresolved_assumptions:
+        st.write(unresolved_assumptions[0].latest_update or unresolved_assumptions[0].why_it_matters)
 
 
 def render_demo_cockpit(state: ResearchState, scenario: DemoScenario) -> None:
@@ -539,6 +622,37 @@ def render_retrieval_scores(state: ResearchState) -> None:
         width="stretch",
         hide_index=True,
     )
+
+
+def render_sources(state: ResearchState) -> None:
+    st.subheader("Sources")
+    if not state.sources:
+        st.info("No sources recorded.")
+        return
+
+    st.dataframe(
+        [
+            {
+                "ID": source.id,
+                "Title": source.title,
+                "Type": source.source_type,
+                "Year": source.published_year or "",
+                "Scope": source.evidence_scope or "",
+                "URL": source.url or "",
+                "Tags": ", ".join(source.tags),
+            }
+            for source in state.sources
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+
+    with st.expander("Source text"):
+        for source in state.sources:
+            st.markdown(f"**{source.id}: {source.title}**")
+            if source.url:
+                st.caption(source.url)
+            st.write(source.text)
 
 
 def render_research_tasks(state: ResearchState) -> None:
@@ -701,8 +815,11 @@ def render_live_harness(result: LiveRunResult) -> None:
     st.dataframe(
         [
             {
+                "Source mode": result.guardrails.source_mode,
                 "Prepared corpus only": result.guardrails.prepared_corpus_only,
                 "Live web search": result.guardrails.allow_live_web_search,
+                "Web search model": result.guardrails.web_search_model or "",
+                "Max web sources": result.guardrails.max_web_sources,
                 "Execution": result.guardrails.execution_backend,
                 "Observability": result.guardrails.observability_backend,
                 "Credentials": "available" if result.credentials_available else "missing",
@@ -1113,6 +1230,10 @@ def _initialize_demo_controls(scenarios: list[DemoScenario]) -> None:
     required_keys = {
         "thesis_text",
         "max_iterations",
+        "source_mode",
+        "allow_live_web_search",
+        "web_search_model",
+        "max_web_sources",
         "orchestration",
         "live_sdk_enabled",
         "live_sdk_dry_run",
@@ -1128,6 +1249,8 @@ def _initialize_demo_controls(scenarios: list[DemoScenario]) -> None:
     if not required_keys.issubset(st.session_state.keys()):
         _apply_demo_scenario(selected_scenario, clear_results=False)
     st.session_state.setdefault("live_sdk_model", DEFAULT_LIVE_SDK_MODEL)
+    st.session_state.setdefault("web_search_model", DEFAULT_LIVE_SDK_MODEL)
+    st.session_state.setdefault("max_web_sources", 8)
 
 
 def _apply_selected_demo_scenario() -> None:
@@ -1139,6 +1262,10 @@ def _apply_selected_demo_scenario() -> None:
 def _apply_demo_scenario(scenario: DemoScenario, *, clear_results: bool) -> None:
     st.session_state.thesis_text = scenario.thesis
     st.session_state.max_iterations = 1
+    st.session_state.source_mode = scenario.source_mode
+    st.session_state.allow_live_web_search = scenario.allow_live_web_search
+    st.session_state.web_search_model = DEFAULT_LIVE_SDK_MODEL
+    st.session_state.max_web_sources = 8
     st.session_state.orchestration = scenario.orchestration
     st.session_state.live_sdk_enabled = (
         scenario.orchestration == "live_sdk" and not scenario.live_dry_run

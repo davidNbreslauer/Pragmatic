@@ -61,6 +61,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="off",
     )
     live_parser.add_argument(
+        "--source-mode",
+        choices=["prepared", "web"],
+        default="prepared",
+    )
+    live_parser.add_argument(
+        "--allow-live-web-search",
+        action="store_true",
+        help="Allow live web source acquisition when --source-mode web is selected.",
+    )
+    live_parser.add_argument("--web-search-model")
+    live_parser.add_argument("--max-web-sources", type=int, default=8)
+    live_parser.add_argument(
         "--allow-live-sdk",
         action="store_true",
         help="Required confirmation that this command may make a live OpenAI API call.",
@@ -87,6 +99,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=["local", "raindrop", "off"],
         default="local",
     )
+    harness_parser.add_argument(
+        "--source-mode",
+        choices=["prepared", "web"],
+        default="prepared",
+    )
+    harness_parser.add_argument(
+        "--allow-live-web-search",
+        action="store_true",
+        help="Allow live web source acquisition when --source-mode web is selected.",
+    )
+    harness_parser.add_argument("--web-search-model")
+    harness_parser.add_argument("--max-web-sources", type=int, default=8)
     harness_parser.add_argument(
         "--live",
         action="store_true",
@@ -249,6 +273,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_iterations=args.max_iterations,
                 execution_backend=args.execution_backend,
                 observability_mode=args.observability,
+                source_mode=args.source_mode,
+                allow_live_web_search=args.allow_live_web_search,
+                web_search_model=args.web_search_model,
+                max_web_sources=args.max_web_sources,
                 allow_live_sdk=args.allow_live_sdk,
             )
         except (LiveAgentsSDKNotEnabled, AgentsSDKCredentialsError) as exc:
@@ -273,6 +301,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             max_iterations=args.max_iterations,
             execution_backend=args.execution_backend,
+            source_mode=args.source_mode,
+            allow_live_web_search=args.allow_live_web_search,
+            web_search_model=args.web_search_model,
+            max_web_sources=args.max_web_sources,
             observability_mode=args.observability,
             output_dir=args.output_dir,
             write_artifact=not args.no_artifact,

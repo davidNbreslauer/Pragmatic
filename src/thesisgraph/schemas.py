@@ -30,12 +30,16 @@ SourceType = Literal[
     "blog_post",
     "company_claim",
     "case_study",
+    "standard",
+    "government",
+    "news",
     "review",
     "dataset",
     "unknown",
 ]
 
 QuestionStatus = Literal["open", "searched", "answered", "failed"]
+SourceAcquisitionMode = Literal["prepared", "web"]
 ObservabilityBackend = Literal["local", "raindrop", "off"]
 ObservabilityStatus = Literal["recorded", "skipped", "failed"]
 ExecutionBackend = Literal["local", "modal"]
@@ -286,6 +290,8 @@ class DemoScenario(BaseModel):
     orchestration: DemoOrchestration
     execution_backend: ExecutionBackend
     observability_backend: ObservabilityBackend
+    source_mode: SourceAcquisitionMode = "prepared"
+    allow_live_web_search: bool = False
     replay_demo: bool = False
     live_dry_run: bool = True
     require_demo_proof: bool = False
@@ -411,8 +417,11 @@ class ResearchState(BaseModel):
 class LiveRunGuardrails(BaseModel):
     mode: LiveRunMode = "dry_run"
     allow_live_sdk: bool = False
+    source_mode: SourceAcquisitionMode = "prepared"
     prepared_corpus_only: bool = True
     allow_live_web_search: bool = False
+    web_search_model: str | None = None
+    max_web_sources: int = Field(default=8, ge=1, le=20)
     max_turns: int = Field(default=4, ge=1, le=20)
     timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
     max_iterations: int = Field(default=1, ge=1, le=5)

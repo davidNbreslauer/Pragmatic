@@ -18,6 +18,7 @@ from thesisgraph.research_loop import DEFAULT_THESIS
 from thesisgraph.schemas import (
     ExecutionBackend,
     LiveRunGuardrails,
+    LiveRunProof,
     LiveRunResult,
     LiveRunStatus,
     ResearchState,
@@ -42,6 +43,7 @@ def run_live_harness_sync(
     observability_mode: ObservabilityMode = "local",
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
+    require_demo_proof: bool = False,
 ) -> LiveRunResult:
     try:
         asyncio.get_running_loop()
@@ -61,6 +63,7 @@ def run_live_harness_sync(
                 observability_mode=observability_mode,
                 output_dir=output_dir,
                 write_artifact=write_artifact,
+                require_demo_proof=require_demo_proof,
             )
         )
     raise RuntimeError("Use run_live_harness from an active event loop.")
@@ -81,6 +84,7 @@ async def run_live_harness(
     observability_mode: ObservabilityMode = "local",
     output_dir: str | Path | None = None,
     write_artifact: bool = True,
+    require_demo_proof: bool = False,
 ) -> LiveRunResult:
     guardrails = LiveRunGuardrails(
         mode="live" if mode == "live" else "dry_run",
@@ -187,13 +191,19 @@ async def run_live_harness(
         )
         return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
 
+    proof = build_live_run_proof(state, guardrails)
+    status: LiveRunStatus = "succeeded"
+    message = "Live OpenAI Agents SDK run completed and returned a valid ResearchState."
+    if require_demo_proof and not proof.demo_ready:
+        status = "failed"
+        message = f"Live SDK run completed, but demo proof was incomplete. {proof.summary}"
     result = LiveRunResult(
         id=result_id,
         created_at=created_at,
         completed_at=_utc_now(),
         elapsed_seconds=time.monotonic() - started,
         mode=guardrails.mode,
-        status="succeeded",
+        status=status,
         thesis_text=thesis_text,
         model=model,
         guardrails=guardrails,
@@ -201,9 +211,55 @@ async def run_live_harness(
         state=state,
         trace_path=_trace_path(state),
         trace_id=_trace_id(state),
-        message="Live OpenAI Agents SDK run completed and returned a valid ResearchState.",
+        proof=proof,
+        message=message,
+        error_type="DemoProofIncomplete" if status == "failed" else None,
     )
     return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+
+def build_live_run_proof(
+    state: ResearchState,
+    guardrails: LiveRunGuardrails,
+) -> LiveRunProof:
+    modal_task_count = len(
+        [result for result in state.research_task_results if result.backend == "modal"]
+    )
+    fallback_task_count = len(
+        [result for result in state.research_task_results if result.backend != guardrails.execution_backend]
+    )
+    workshop_recorded = state.observability is not None and state.observability.status == "recorded"
+    final_output_validated = bool(state.agent_run and state.agent_run.final_output_validated)
+    demo_ready = (
+        final_output_validated
+        and guardrails.prepared_corpus_only
+        and (guardrails.execution_backend != "modal" or modal_task_count > 0)
+        and (guardrails.observability_backend == "off" or workshop_recorded)
+        and bool(state.generated_evals)
+    )
+    summary = (
+        f"validated={final_output_validated}; modal_tasks={modal_task_count}; "
+        f"workshop_recorded={workshop_recorded}; evals={len(state.generated_evals)}."
+    )
+    return LiveRunProof(
+        final_output_validated=final_output_validated,
+        prepared_corpus_only=guardrails.prepared_corpus_only,
+        modal_task_count=modal_task_count,
+        remote_modal_task_count=modal_task_count,
+        fallback_task_count=fallback_task_count,
+        workshop_recorded=workshop_recorded,
+        trace_id=_trace_id(state),
+        trace_path=_trace_path(state),
+        generated_eval_count=len(state.generated_evals),
+        invalid_leap_count=len(state.invalid_leaps),
+        replay_outcome_count=(
+            len(state.eval_workshop.replay_outcomes)
+            if state.eval_workshop is not None
+            else 0
+        ),
+        demo_ready=demo_ready,
+        summary=summary,
+    )
 
 
 def _blocked_result(

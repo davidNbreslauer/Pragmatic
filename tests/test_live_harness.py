@@ -73,10 +73,43 @@ def test_live_harness_success_writes_schema_valid_artifact(monkeypatch, tmp_path
     assert result.state is not None
     assert result.state.agent_run is not None
     assert result.state.agent_run.mode == "live_sdk"
+    assert result.proof is not None
+    assert result.proof.final_output_validated is True
+    assert result.proof.demo_ready is True
     assert result.output_path is not None
     payload = json.loads((tmp_path / f"{result.id}.json").read_text(encoding="utf-8"))
     assert payload["status"] == "succeeded"
     assert payload["state"]["agent_run"]["mode"] == "live_sdk"
+    assert payload["proof"]["demo_ready"] is True
+
+
+def test_live_harness_can_require_demo_proof(monkeypatch, tmp_path):
+    from thesisgraph import agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="local")
+
+    async def fake_run(agent, prompt, **kwargs):
+        del agent, prompt, kwargs
+        return SimpleNamespace(final_output=expected.model_dump())
+
+    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+
+    result = run_live_harness_sync(
+        DEFAULT_THESIS,
+        mode="live",
+        allow_live_sdk=True,
+        execution_backend="modal",
+        observability_mode="local",
+        require_demo_proof=True,
+        output_dir=tmp_path,
+    )
+
+    assert result.status == "failed"
+    assert result.error_type == "DemoProofIncomplete"
+    assert result.proof is not None
+    assert result.proof.demo_ready is False
+    assert result.proof.remote_modal_task_count == 0
 
 
 def test_live_harness_times_out_live_run(monkeypatch, tmp_path):

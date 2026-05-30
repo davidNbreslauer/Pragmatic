@@ -141,6 +141,14 @@ Modal-backed execution is now visible as a broader research fan-out layer. Prepa
 
 Raindrop Workshop artifacts now include a connection layer that makes the demo trace readable: specialist SDK steps, Modal/local task spans, failure artifacts, generated evals, and replay outcomes are linked through stable IDs. Generated evals carry their source failure ID, task spans include agent/tool and worker metadata, the workshop bundle includes specialist/task artifacts plus connection rows, and the Streamlit Eval Workshop panel renders the chain directly.
 
+## Milestone 26
+
+The live SDK harness now produces a demo-readiness proof. Successful live runs include a `LiveRunProof` showing schema validation, prepared-corpus guardrails, Modal task counts, Workshop observability, trace paths, generated eval counts, invalid leap counts, and replay outcome counts. `--require-demo-proof` can fail a live run when the requested Modal/Workshop proof is missing, and the Streamlit live harness panel shows the same proof metrics.
+
+```bash
+PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --execution-backend modal --observability local --require-demo-proof
+```
+
 Run tests:
 
 ```bash

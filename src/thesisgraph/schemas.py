@@ -390,6 +390,22 @@ class LiveRunGuardrails(BaseModel):
     observability_backend: ObservabilityBackend = "local"
 
 
+class LiveRunProof(BaseModel):
+    final_output_validated: bool
+    prepared_corpus_only: bool
+    modal_task_count: int = Field(ge=0)
+    remote_modal_task_count: int = Field(ge=0)
+    fallback_task_count: int = Field(ge=0)
+    workshop_recorded: bool
+    trace_id: str | None = None
+    trace_path: str | None = None
+    generated_eval_count: int = Field(ge=0)
+    invalid_leap_count: int = Field(ge=0)
+    replay_outcome_count: int = Field(ge=0)
+    demo_ready: bool
+    summary: str
+
+
 class LiveRunResult(BaseModel):
     id: str
     created_at: str
@@ -405,6 +421,7 @@ class LiveRunResult(BaseModel):
     output_path: str | None = None
     trace_path: str | None = None
     trace_id: str | None = None
+    proof: LiveRunProof | None = None
     message: str
     error_type: str | None = None
 

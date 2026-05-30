@@ -101,6 +101,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Do not write the harness result under .thesisgraph/live_runs.",
     )
+    harness_parser.add_argument(
+        "--require-demo-proof",
+        action="store_true",
+        help="Fail unless the live result validates SDK output, requested Modal execution, and Workshop observability.",
+    )
 
     doctor_parser = subparsers.add_parser(
         "doctor",
@@ -251,6 +256,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             observability_mode=args.observability,
             output_dir=args.output_dir,
             write_artifact=not args.no_artifact,
+            require_demo_proof=args.require_demo_proof,
         )
         payload = result.model_dump_json(indent=2)
         if args.output:

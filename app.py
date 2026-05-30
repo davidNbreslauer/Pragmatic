@@ -43,6 +43,7 @@ def main() -> None:
         live_sdk_enabled = st.checkbox("Enable live SDK calls", value=False)
         live_sdk_model = st.text_input("Live SDK model", value="")
         live_sdk_dry_run = st.checkbox("Dry-run live SDK", value=True)
+        live_sdk_require_demo_proof = st.checkbox("Require demo proof", value=False)
         live_sdk_max_turns = st.slider("Live max turns", min_value=1, max_value=10, value=4)
         live_sdk_timeout = st.number_input(
             "Live timeout seconds",
@@ -147,6 +148,7 @@ def main() -> None:
                         max_iterations=max_iterations,
                         execution_backend=execution_backend,
                         observability_mode=observability_mode,
+                        require_demo_proof=live_sdk_require_demo_proof,
                     )
                 st.session_state.live_run_result_json = live_result.model_dump_json()
                 if live_result.state is not None:
@@ -561,6 +563,14 @@ def render_live_harness(result: LiveRunResult) -> None:
         width="stretch",
         hide_index=True,
     )
+    if result.proof is not None:
+        st.markdown("**Live demo proof**")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Demo ready", "yes" if result.proof.demo_ready else "no")
+        col2.metric("Modal tasks", result.proof.remote_modal_task_count)
+        col3.metric("Generated evals", result.proof.generated_eval_count)
+        col4.metric("Workshop", "recorded" if result.proof.workshop_recorded else "missing")
+        st.caption(result.proof.summary)
 
 
 def render_agent_run(state: ResearchState) -> None:

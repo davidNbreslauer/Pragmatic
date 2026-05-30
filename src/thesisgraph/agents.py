@@ -506,6 +506,15 @@ class ResearchManager:
             final_output_validated=True,
             message="Live OpenAI Agents SDK run returned a schema-validated ResearchState.",
         )
+        if state.eval_workshop is None:
+            state.eval_workshop = build_eval_workshop(state)
+        if observability_mode != "off" and (
+            state.observability is None or state.observability.backend == "off"
+        ):
+            state.observability = record_research_run(
+                state,
+                mode=observability_mode,
+            )
         _append_agent_trace(
             state,
             "OpenAI Agents SDK live orchestration validated the final ResearchState.",

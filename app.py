@@ -34,7 +34,7 @@ from pragmatic.ui_flow import (
 )
 
 
-st.set_page_config(page_title="Pragmatic", layout="wide")
+st.set_page_config(page_title="Pragmatic AI", layout="wide")
 
 DEFAULT_DEMO_SCENARIO_ID = "live_full"
 DEFAULT_LIVE_SDK_MODEL = "gpt-5-mini"
@@ -462,7 +462,7 @@ def render_app_chrome() -> None:
 
 
 def render_question_panel(scenario: DemoScenario) -> tuple[bool, bool]:
-    st.markdown('<div class="pragmatic-eyebrow">Pragmatic</div>', unsafe_allow_html=True)
+    st.markdown('<div class="pragmatic-eyebrow">Pragmatic AI</div>', unsafe_allow_html=True)
     st.title("Do diligence.")
     st.markdown(
         '<div class="pragmatic-question-copy">'
@@ -478,7 +478,7 @@ def render_question_panel(scenario: DemoScenario) -> tuple[bool, bool]:
             placeholder="Can spider silk make a bullet proof vest?",
         )
         col1, col2, col3 = st.columns([1.05, 1.05, 3.1], vertical_alignment="center")
-        run_clicked = col1.button("Ask Pragmatic", type="primary", width="stretch")
+        run_clicked = col1.button("Ask Pragmatic AI", type="primary", width="stretch")
         load_latest_live_clicked = col2.button("Load Latest", width="stretch")
         col3.markdown(
             "<div class=\"pragmatic-status-row\">"

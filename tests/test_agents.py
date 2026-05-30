@@ -156,6 +156,34 @@ def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
     assert "execute_source_research_tasks_tool" in captured["prompt"]
 
 
+def test_live_sdk_finalizes_missing_generated_evals(monkeypatch):
+    pytest.importorskip("agents")
+    from thesisgraph import agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    partial = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+    partial.generated_evals = []
+    partial.eval_workshop = None
+    partial.observability = None
+
+    async def fake_run(agent, prompt, **kwargs):
+        del agent, prompt, kwargs
+        return SimpleNamespace(final_output=partial.model_dump())
+
+    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+
+    state = ResearchManager().run_live_sync(
+        DEFAULT_THESIS,
+        observability_mode="off",
+        allow_live_sdk=True,
+    )
+
+    assert state.invalid_leaps
+    assert state.generated_evals
+    assert state.eval_workshop is not None
+    assert any("generating evals" in event.message for event in state.trace_events)
+
+
 def test_cli_live_sdk_requires_explicit_allow_flag(capsys):
     pytest.importorskip("agents")
 

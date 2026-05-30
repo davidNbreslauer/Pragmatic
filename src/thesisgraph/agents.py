@@ -478,6 +478,8 @@ class ResearchManager:
             "propose_decisive_tests_tool, run_decisive_test_verifiers_tool, "
             "generate_evals_from_failures_tool, build_eval_workshop_tool, "
             "record_observability_tool. "
+            "If any invalid_leaps are present, generated_evals must be non-empty. "
+            "If generated_evals are missing, call generate_evals_from_failures_tool before returning. "
             "Do not perform live web search or add sources outside the prepared corpus. "
             "Return the final schema-valid ResearchState object.\n\n"
             f"max_iterations: {max_iterations}\n"
@@ -506,15 +508,11 @@ class ResearchManager:
             final_output_validated=True,
             message="Live OpenAI Agents SDK run returned a schema-validated ResearchState.",
         )
-        if state.eval_workshop is None:
-            state.eval_workshop = build_eval_workshop(state)
-        if observability_mode != "off" and (
-            state.observability is None or state.observability.backend == "off"
-        ):
-            state.observability = record_research_run(
-                state,
-                mode=observability_mode,
-            )
+        state = _finalize_live_research_state(
+            state,
+            execution_backend=_validate_execution_backend(execution_backend_value),
+            observability_mode=observability_mode,
+        )
         _append_agent_trace(
             state,
             "OpenAI Agents SDK live orchestration validated the final ResearchState.",
@@ -928,6 +926,104 @@ def _coerce_research_state(value: Any) -> ResearchState:
     raise AgentOutputValidationError(
         f"Agent output could not be converted to ResearchState: {type(value).__name__}"
     )
+
+
+def _finalize_live_research_state(
+    state: ResearchState,
+    *,
+    execution_backend: ExecutionBackend,
+    observability_mode: ObservabilityMode,
+) -> ResearchState:
+    """Close gaps left by a live model while preserving its schema-valid state."""
+
+    if state.sources and state.evidence_items and not state.evidence_conflicts:
+        task = build_cross_check_task(state.sources, state.evidence_items, state.assumptions)
+        execution = execute_research_tasks(
+            [task],
+            backend=execution_backend,
+            fallback_to_local=True,
+        )
+        _append_unique(state.research_task_results, execution.results)
+        state.evidence_conflicts = [
+            conflict
+            for result in execution.results
+            for conflict in result.evidence_conflicts
+        ]
+        _append_agent_trace(
+            state,
+            "Finalized live state with deterministic cross-source evidence checking.",
+            metadata={
+                "backend": execution.backend,
+                "attempted_backend": execution.attempted_backend,
+                "conflict_count": str(len(state.evidence_conflicts)),
+            },
+        )
+
+    if not state.invalid_leaps:
+        _append_unique(state.invalid_leaps, detect_invalid_leaps(state))
+        _append_agent_trace(
+            state,
+            "Finalized live state with deterministic invalid-leap detection.",
+            metadata={"invalid_leaps": str(len(state.invalid_leaps))},
+        )
+
+    if not state.decisive_tests:
+        state.decisive_tests = propose_decisive_tests(state)
+        _append_agent_trace(
+            state,
+            "Finalized live state with decisive-test proposals.",
+            metadata={"decisive_tests": str(len(state.decisive_tests))},
+        )
+
+    if state.decisive_tests and not state.verifier_results:
+        tasks = build_verifier_tasks(
+            state.decisive_tests,
+            state.sources,
+            state.evidence_items,
+            state.evidence_conflicts,
+        )
+        if tasks:
+            execution = execute_research_tasks(
+                tasks,
+                backend=execution_backend,
+                fallback_to_local=True,
+            )
+            _append_unique(state.research_task_results, execution.results)
+            state.verifier_results = [
+                verifier_result
+                for result in execution.results
+                for verifier_result in result.verifier_results
+            ]
+            _append_agent_trace(
+                state,
+                "Finalized live state with decisive-test verifier tasks.",
+                metadata={
+                    "backend": execution.backend,
+                    "attempted_backend": execution.attempted_backend,
+                    "verifier_results": str(len(state.verifier_results)),
+                },
+            )
+
+    if state.evidence_items:
+        updates = update_beliefs(state)
+        state.belief_updates = updates
+        apply_belief_updates(state, updates)
+
+    if state.invalid_leaps and not state.generated_evals:
+        state.generated_evals = generate_evals_from_failures(state.invalid_leaps)
+        _append_agent_trace(
+            state,
+            "Finalized live state by generating evals from detected failures.",
+            metadata={"generated_evals": str(len(state.generated_evals))},
+        )
+
+    state.eval_workshop = build_eval_workshop(state)
+    if observability_mode != "off":
+        state.observability = record_research_run(
+            state,
+            mode=observability_mode,
+        )
+    return state
 
 
 def _append_agent_trace(

@@ -2,10 +2,10 @@ import json
 import os
 from types import SimpleNamespace
 
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.agents import ResearchManager
-from thesisgraph.cli import main
-from thesisgraph.live_harness import load_latest_live_run, run_live_harness_sync
+from pragmatic import DEFAULT_THESIS
+from pragmatic.agents import ResearchManager
+from pragmatic.cli import main
+from pragmatic.live_harness import load_latest_live_run, run_live_harness_sync
 
 
 def test_live_harness_dry_run_does_not_call_sdk(monkeypatch, tmp_path):
@@ -47,7 +47,7 @@ def test_live_harness_blocks_live_without_explicit_allow(monkeypatch, tmp_path):
 
 
 def test_live_harness_success_writes_schema_valid_artifact(monkeypatch, tmp_path):
-    from thesisgraph import agents as agents_module
+    from pragmatic import agents as agents_module
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
@@ -118,7 +118,7 @@ def test_live_harness_passes_live_web_search_settings(monkeypatch, tmp_path):
 
 
 def test_live_harness_can_require_demo_proof(monkeypatch, tmp_path):
-    from thesisgraph import agents as agents_module
+    from pragmatic import agents as agents_module
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="local")

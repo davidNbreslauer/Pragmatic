@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from thesisgraph.schemas import ResearchQuestion, RetrievalScore, Source
+from pragmatic.schemas import ResearchQuestion, RetrievalScore, Source
 
 
 DEFAULT_CORPUS_PATH = Path(__file__).resolve().parents[2] / "data" / "ai_scientist_sources.json"

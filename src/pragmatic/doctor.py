@@ -6,17 +6,17 @@ import sys
 import time
 from pathlib import Path
 
-from thesisgraph.corpus import load_corpus
-from thesisgraph.execution import execute_research_tasks
-from thesisgraph.research_loop import DEFAULT_THESIS, decompose_thesis, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.corpus import load_corpus
+from pragmatic.execution import execute_research_tasks
+from pragmatic.research_loop import DEFAULT_THESIS, decompose_thesis, run_research_loop
+from pragmatic.schemas import (
     IntegrationCheck,
     IntegrationDoctorResult,
     ResearchTask,
 )
 
 
-DEFAULT_DOCTOR_DIR = Path(".thesisgraph") / "doctor"
+DEFAULT_DOCTOR_DIR = Path(".pragmatic") / "doctor"
 
 
 def run_integration_doctor(

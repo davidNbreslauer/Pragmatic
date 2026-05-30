@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from thesisgraph.schemas import EvidenceConflict, EvidenceItem, Source
+from pragmatic.schemas import EvidenceConflict, EvidenceItem, Source
 
 
 def detect_evidence_conflicts(

@@ -1,8 +1,8 @@
 import json
 
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.cli import main
-from thesisgraph.eval_corpus import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.cli import main
+from pragmatic.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot,
     create_eval_snapshot,

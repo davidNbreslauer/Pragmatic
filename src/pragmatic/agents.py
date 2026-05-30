@@ -9,22 +9,22 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from thesisgraph.belief_update import apply_belief_updates, update_beliefs
-from thesisgraph.corpus import load_corpus, score_corpus_for_questions
-from thesisgraph.decisive_tests import propose_decisive_tests
-from thesisgraph.eval_writer import generate_evals_from_failures
-from thesisgraph.eval_workshop import build_eval_workshop
-from thesisgraph.execution import (
+from pragmatic.belief_update import apply_belief_updates, update_beliefs
+from pragmatic.corpus import load_corpus, score_corpus_for_questions
+from pragmatic.decisive_tests import propose_decisive_tests
+from pragmatic.eval_writer import generate_evals_from_failures
+from pragmatic.eval_workshop import build_eval_workshop
+from pragmatic.execution import (
     build_cross_check_task,
     build_source_extraction_tasks,
     build_source_parse_tasks,
     execute_research_tasks,
 )
-from thesisgraph.extractors import ExtractionMode, extract_evidence
-from thesisgraph.invalid_leaps import detect_invalid_leaps
-from thesisgraph.raindrop_client import ObservabilityMode, record_research_run
-from thesisgraph.replay import run_replay_demo
-from thesisgraph.research_loop import (
+from pragmatic.extractors import ExtractionMode, extract_evidence
+from pragmatic.invalid_leaps import detect_invalid_leaps
+from pragmatic.raindrop_client import ObservabilityMode, record_research_run
+from pragmatic.replay import run_replay_demo
+from pragmatic.research_loop import (
     DEFAULT_THESIS,
     decompose_thesis,
     generate_initial_questions,
@@ -32,8 +32,8 @@ from thesisgraph.research_loop import (
     run_research_loop,
     score_retrieval,
 )
-from thesisgraph.source_search import build_web_corpus
-from thesisgraph.schemas import (
+from pragmatic.source_search import build_web_corpus
+from pragmatic.schemas import (
     AgentRunRecord,
     AgentRunStep,
     Assumption,
@@ -55,7 +55,7 @@ from thesisgraph.schemas import (
     Thesis,
     TraceEvent,
 )
-from thesisgraph.verifiers import build_verifier_tasks
+from pragmatic.verifiers import build_verifier_tasks
 
 try:
     from agents import Agent, Runner, function_tool
@@ -84,7 +84,7 @@ class AgentOutputValidationError(RuntimeError):
 
 
 RESEARCH_MANAGER_INSTRUCTIONS = """
-You are ResearchManager for ThesisGraph.
+You are ResearchManager for Pragmatic.
 
 Own the research loop and keep the output grounded in typed ResearchState artifacts.
 Use tools to decompose the thesis, plan questions, retrieve local corpus sources,
@@ -510,7 +510,7 @@ class ResearchManager:
             else "Do not perform live web search or add sources outside the prepared corpus. "
         )
         prompt = (
-            "Run the ThesisGraph research loop for this thesis using specialist tools. "
+            "Run the Pragmatic research loop for this thesis using specialist tools. "
             "Prefer this order: decompose_thesis_tool, plan_questions_tool, "
             "retrieve_sources_tool, score_retrieval_tool, execute_source_research_tasks_tool, "
             "cross_check_evidence_tool, detect_invalid_leaps_tool, update_beliefs_tool, "
@@ -612,7 +612,7 @@ if function_tool is not None:
 
     @function_tool
     def decompose_thesis_tool(thesis_text: str) -> str:
-        """Decompose a thesis into ThesisGraph assumption objects as JSON."""
+        """Decompose a thesis into Pragmatic assumption objects as JSON."""
 
         assumptions = decompose_thesis(thesis_text)
         return _to_json([assumption.model_dump() for assumption in assumptions])
@@ -879,7 +879,7 @@ if function_tool is not None:
         web_search_model: str = "",
         max_web_sources: int = 8,
     ) -> str:
-        """Run the deterministic ThesisGraph loop and return ResearchState JSON."""
+        """Run the deterministic Pragmatic loop and return ResearchState JSON."""
 
         state = run_research_loop(
             thesis_text,

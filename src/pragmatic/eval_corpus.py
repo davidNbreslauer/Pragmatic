@@ -6,9 +6,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from thesisgraph.eval_suite import generated_eval_to_fixture, run_eval_suite
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.eval_suite import generated_eval_to_fixture, run_eval_suite
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.schemas import (
     EvalCaseDelta,
     EvalCorpusSnapshot,
     EvalSnapshotComparison,
@@ -19,7 +19,7 @@ from thesisgraph.schemas import (
 )
 
 
-DEFAULT_EVAL_CORPUS_DIR = Path(".thesisgraph") / "eval_corpus"
+DEFAULT_EVAL_CORPUS_DIR = Path(".pragmatic") / "eval_corpus"
 INDEX_FILENAME = "index.json"
 DEFAULT_BASELINE_SNAPSHOT_ID = "default_v1"
 CANONICAL_BASELINE_CREATED_AT = "2026-05-30T00:00:00+00:00"

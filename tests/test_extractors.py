@@ -1,13 +1,13 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.corpus import load_corpus
-from thesisgraph.extractors import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.corpus import load_corpus
+from pragmatic.extractors import (
     ExtractionResult,
     extract_evidence_batch,
     extract_evidence_local,
 )
-from thesisgraph.modal_jobs import make_extraction_payloads, extract_source_job_local
-from thesisgraph.research_loop import decompose_thesis, run_research_loop
-from thesisgraph.schemas import EvidenceItem
+from pragmatic.modal_jobs import make_extraction_payloads, extract_source_job_local
+from pragmatic.research_loop import decompose_thesis, run_research_loop
+from pragmatic.schemas import EvidenceItem
 
 
 def test_local_extractor_returns_typed_evidence():
@@ -53,7 +53,7 @@ def test_modal_extraction_mode_can_use_adapter_without_remote_call(monkeypatch):
         return extract_evidence_local(modal_sources, modal_assumptions)
 
     monkeypatch.setattr(
-        "thesisgraph.extractors.extract_evidence_with_modal",
+        "pragmatic.extractors.extract_evidence_with_modal",
         fake_modal_extractor,
     )
 
@@ -76,7 +76,7 @@ def test_research_loop_records_modal_fallback_metadata(monkeypatch):
         raise RuntimeError("modal unavailable in test")
 
     monkeypatch.setattr(
-        "thesisgraph.modal_jobs.run_research_tasks_with_modal",
+        "pragmatic.modal_jobs.run_research_tasks_with_modal",
         failing_modal_runner,
     )
 

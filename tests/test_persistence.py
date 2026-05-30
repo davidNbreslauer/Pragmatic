@@ -1,6 +1,6 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
-from thesisgraph.research_loop import run_research_loop
+from pragmatic import DEFAULT_THESIS
+from pragmatic.persistence import compare_runs, list_runs, load_run, save_run
+from pragmatic.research_loop import run_research_loop
 
 
 def test_save_and_load_run_round_trips_research_state(tmp_path):

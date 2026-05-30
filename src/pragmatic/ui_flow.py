@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from typing import Any
 
-from thesisgraph.schemas import ResearchState
+from pragmatic.schemas import ResearchState
 
 
 def build_orchestration_flow_snapshot(

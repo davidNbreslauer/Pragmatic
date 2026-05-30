@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from thesisgraph.schemas import (
+from pragmatic.schemas import (
     BeliefDelta,
     ResearchState,
     RunComparison,
@@ -14,7 +14,7 @@ from thesisgraph.schemas import (
 )
 
 
-DEFAULT_RUN_DIR = Path(".thesisgraph") / "runs"
+DEFAULT_RUN_DIR = Path(".pragmatic") / "runs"
 INDEX_FILENAME = "index.json"
 
 

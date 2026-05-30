@@ -1,6 +1,6 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.research_loop import run_research_loop
-from thesisgraph.verifiers import build_verifier_tasks, run_mock_verifier
+from pragmatic import DEFAULT_THESIS
+from pragmatic.research_loop import run_research_loop
+from pragmatic.verifiers import build_verifier_tasks, run_mock_verifier
 
 
 def test_mock_verifier_fails_without_direct_prospective_validation():

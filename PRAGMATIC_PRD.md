@@ -1,8 +1,8 @@
-# PRD: ThesisGraph
+# PRD: Pragmatic
 
 ## Summary
 
-ThesisGraph is an autoresearch agent for evaluating whether a technical thesis is actually supported by evidence. It decomposes a thesis into assumptions, searches a prepared evidence corpus, classifies evidence quality, detects invalid inference leaps, updates a belief graph, proposes decisive tests, and turns its own reasoning failures into evals.
+Pragmatic is an autoresearch agent for evaluating whether a technical thesis is actually supported by evidence. It decomposes a thesis into assumptions, searches a prepared evidence corpus, classifies evidence quality, detects invalid inference leaps, updates a belief graph, proposes decisive tests, and turns its own reasoning failures into evals.
 
 The MVP should demonstrate a visible research-state machine, not a chatbot or report generator.
 
@@ -42,7 +42,7 @@ Autonomous research systems often produce persuasive reports, but it is hard to 
 
 ## Product Principle
 
-ThesisGraph does not answer "is this thesis true?" with a polished essay.
+Pragmatic does not answer "is this thesis true?" with a polished essay.
 
 It answers:
 
@@ -260,7 +260,7 @@ Required sections:
 
 | Section | Content |
 |---|---|
-| Thesis input | Text box plus "Run ThesisGraph" button |
+| Thesis input | Text box plus "Run Pragmatic" button |
 | Research timeline | Ordered trace of decomposition, retrieval, extraction, skepticism, belief update |
 | Assumption map | Table of assumptions, support, confidence, evidence gaps |
 | Evidence table | Source, evidence type, claim supported, limitation |
@@ -281,7 +281,7 @@ First pass:
 
 Correction:
 
-> ThesisGraph flags the invalid leap and writes an eval.
+> Pragmatic flags the invalid leap and writes an eval.
 
 Replay:
 
@@ -350,7 +350,7 @@ The MVP succeeds if a viewer can see:
 
 ## Demo Script
 
-"Everyone here is building autonomous research systems. ThesisGraph asks whether those systems are actually doing research or producing plausible reports. It takes a technical thesis, decomposes it into assumptions, searches evidence, detects invalid inference leaps, updates belief state, and turns mistakes into evals."
+"Everyone here is building autonomous research systems. Pragmatic asks whether those systems are actually doing research or producing plausible reports. It takes a technical thesis, decomposes it into assumptions, searches evidence, detects invalid inference leaps, updates belief state, and turns mistakes into evals."
 
 Then show:
 
@@ -383,4 +383,4 @@ Then show:
 
 ## Recommended MVP Choice
 
-Build one thesis deeply: AI-scientist systems and materials discovery. Make the core demo about separating graph/retrieval support from actual discovery support. The winning moment is not that ThesisGraph finds "the answer"; it is that ThesisGraph refuses to let proxy evidence masquerade as discovery.
+Build one thesis deeply: AI-scientist systems and materials discovery. Make the core demo about separating graph/retrieval support from actual discovery support. The winning moment is not that Pragmatic finds "the answer"; it is that Pragmatic refuses to let proxy evidence masquerade as discovery.

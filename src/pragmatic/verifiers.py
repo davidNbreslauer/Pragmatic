@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from thesisgraph.schemas import (
+from pragmatic.schemas import (
     DecisiveTest,
     EvidenceConflict,
     EvidenceItem,

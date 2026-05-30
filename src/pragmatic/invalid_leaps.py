@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from thesisgraph.schemas import InvalidLeap, ResearchState
+from pragmatic.schemas import InvalidLeap, ResearchState
 
 
 def detect_invalid_leaps(state: ResearchState) -> list[InvalidLeap]:

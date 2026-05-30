@@ -3,18 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from thesisgraph.doctor import run_integration_doctor
-from thesisgraph.eval_suite import run_eval_suite
-from thesisgraph.replay import run_replay_demo
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.doctor import run_integration_doctor
+from pragmatic.eval_suite import run_eval_suite
+from pragmatic.replay import run_replay_demo
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.schemas import (
     DemoScenario,
     DemoSmokeCheck,
     DemoSmokeResult,
 )
 
 
-DEFAULT_DEMO_DIR = Path(".thesisgraph") / "demo"
+DEFAULT_DEMO_DIR = Path(".pragmatic") / "demo"
 
 
 def demo_scenarios() -> list[DemoScenario]:

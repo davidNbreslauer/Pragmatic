@@ -1,15 +1,15 @@
 import json
 
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.cli import main
-from thesisgraph.eval_suite import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.cli import main
+from pragmatic.eval_suite import (
     check_benchmark_proxy_boundary,
     check_company_claim_anecdotal,
     export_generated_eval_cases,
     run_eval_suite,
 )
-from thesisgraph.replay import simulate_overcredited_first_pass
-from thesisgraph.research_loop import run_research_loop
+from pragmatic.replay import simulate_overcredited_first_pass
+from pragmatic.research_loop import run_research_loop
 
 
 def test_default_eval_suite_passes():

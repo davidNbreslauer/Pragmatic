@@ -5,9 +5,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.schemas import (
     GeneratedEval,
     GeneratedEvalFixture,
     RegressionEvalCase,

@@ -1,6 +1,6 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.cross_checking import detect_evidence_conflicts
-from thesisgraph.research_loop import run_research_loop
+from pragmatic import DEFAULT_THESIS
+from pragmatic.cross_checking import detect_evidence_conflicts
+from pragmatic.research_loop import run_research_loop
 
 
 def test_cross_source_checker_detects_validation_conflicts():

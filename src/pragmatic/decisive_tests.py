@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from thesisgraph.schemas import DecisiveTest, ResearchState
+from pragmatic.schemas import DecisiveTest, ResearchState
 
 
 def propose_decisive_tests(state: ResearchState) -> list[DecisiveTest]:

@@ -1,7 +1,7 @@
-from thesisgraph import DEFAULT_THESIS, run_research_loop
-from thesisgraph.corpus import load_corpus, score_source_for_question
-from thesisgraph.research_loop import generate_initial_questions
-from thesisgraph.schemas import ResearchState, Thesis
+from pragmatic import DEFAULT_THESIS, run_research_loop
+from pragmatic.corpus import load_corpus, score_source_for_question
+from pragmatic.research_loop import generate_initial_questions
+from pragmatic.schemas import ResearchState, Thesis
 
 
 def test_load_corpus_validates_sources():

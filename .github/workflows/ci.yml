@@ -27,4 +27,4 @@ jobs:
         run: python -m compileall app.py src tests
 
       - name: Check eval baseline
-        run: python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
+        run: python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-regression

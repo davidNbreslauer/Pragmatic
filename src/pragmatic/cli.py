@@ -6,27 +6,27 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from thesisgraph.agents import (
+from pragmatic.agents import (
     AgentsSDKCredentialsError,
     LiveAgentsSDKNotEnabled,
     ResearchManager,
 )
-from thesisgraph.doctor import run_integration_doctor
-from thesisgraph.demo import demo_scenarios, run_demo_smoke
-from thesisgraph.eval_corpus import (
+from pragmatic.doctor import run_integration_doctor
+from pragmatic.demo import demo_scenarios, run_demo_smoke
+from pragmatic.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot_by_id,
     list_eval_snapshots,
     save_eval_snapshot,
     write_eval_baseline,
 )
-from thesisgraph.eval_suite import export_generated_eval_cases, run_eval_suite
-from thesisgraph.live_harness import run_live_harness_sync
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.eval_suite import export_generated_eval_cases, run_eval_suite
+from pragmatic.live_harness import run_live_harness_sync
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="thesisgraph")
+    parser = argparse.ArgumentParser(prog="pragmatic")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     eval_parser = subparsers.add_parser(
@@ -44,7 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     live_parser = subparsers.add_parser(
         "run-live-sdk",
-        help="Run ThesisGraph through the live OpenAI Agents SDK path.",
+        help="Run Pragmatic through the live OpenAI Agents SDK path.",
     )
     live_parser.add_argument("--thesis", default=DEFAULT_THESIS)
     live_parser.add_argument("--max-iterations", type=int, default=1)
@@ -124,7 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     harness_parser.add_argument(
         "--no-artifact",
         action="store_true",
-        help="Do not write the harness result under .thesisgraph/live_runs.",
+        help="Do not write the harness result under .pragmatic/live_runs.",
     )
     harness_parser.add_argument(
         "--require-demo-proof",

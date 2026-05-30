@@ -1,7 +1,7 @@
 import json
 
-from thesisgraph.cli import main
-from thesisgraph.demo import demo_scenario_by_id, demo_scenarios, run_demo_smoke
+from pragmatic.cli import main
+from pragmatic.demo import demo_scenario_by_id, demo_scenarios, run_demo_smoke
 
 
 def test_demo_scenarios_cover_core_modal_replay_and_live():

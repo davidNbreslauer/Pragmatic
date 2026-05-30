@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "thesisgraph"
+name = "pragmatic"
 version = "0.1.0"
 description = "Autoresearch state machine for evidence-backed thesis evaluation."
 requires-python = ">=3.11"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-thesisgraph = "thesisgraph.cli:main"
+pragmatic = "pragmatic.cli:main"
 
 [project.optional-dependencies]
 dev = [

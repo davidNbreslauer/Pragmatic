@@ -1,10 +1,10 @@
-from thesisgraph.doctor import run_integration_doctor
-from thesisgraph.schemas import ResearchBatchResult, ResearchTaskResult
+from pragmatic.doctor import run_integration_doctor
+from pragmatic.schemas import ResearchBatchResult, ResearchTaskResult
 
 
 def test_integration_doctor_reports_ready_without_live_checks(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr("thesisgraph.doctor._modal_profile_name", lambda: "test-profile")
+    monkeypatch.setattr("pragmatic.doctor._modal_profile_name", lambda: "test-profile")
 
     result = run_integration_doctor(run_openai_live=False, run_modal_remote=False)
 
@@ -18,7 +18,7 @@ def test_integration_doctor_reports_ready_without_live_checks(monkeypatch):
 
 def test_integration_doctor_can_report_live_modal_smoke(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr("thesisgraph.doctor._modal_profile_name", lambda: "test-profile")
+    monkeypatch.setattr("pragmatic.doctor._modal_profile_name", lambda: "test-profile")
 
     def fake_execute_research_tasks(tasks, *, backend, fallback_to_local):
         assert backend == "modal"
@@ -40,7 +40,7 @@ def test_integration_doctor_can_report_live_modal_smoke(monkeypatch):
             metadata={"task_count": "1", "succeeded": "1"},
         )
 
-    monkeypatch.setattr("thesisgraph.doctor.execute_research_tasks", fake_execute_research_tasks)
+    monkeypatch.setattr("pragmatic.doctor.execute_research_tasks", fake_execute_research_tasks)
 
     result = run_integration_doctor(run_modal_remote=True)
 
@@ -52,7 +52,7 @@ def test_integration_doctor_can_report_live_modal_smoke(monkeypatch):
 
 def test_integration_doctor_is_degraded_without_openai_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("thesisgraph.doctor._modal_profile_name", lambda: "test-profile")
+    monkeypatch.setattr("pragmatic.doctor._modal_profile_name", lambda: "test-profile")
 
     result = run_integration_doctor()
 

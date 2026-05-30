@@ -5,6 +5,7 @@ __pycache__/
 .playwright-mcp/
 .mypy_cache/
 .ruff_cache/
+.pragmatic/
 .thesisgraph/
 dist/
 build/

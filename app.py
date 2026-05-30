@@ -6,7 +6,7 @@ import os
 import streamlit as st
 import streamlit.components.v1 as components
 
-from thesisgraph import (
+from pragmatic import (
     DEFAULT_THESIS,
     DemoScenario,
     DemoSmokeResult,
@@ -25,17 +25,17 @@ from thesisgraph import (
     run_integration_doctor,
     save_eval_snapshot,
 )
-from thesisgraph.live_harness import load_latest_live_run
-from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
-from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
-from thesisgraph.schemas import ReplayResult, RunComparison
-from thesisgraph.ui_flow import (
+from pragmatic.live_harness import load_latest_live_run
+from pragmatic.persistence import compare_runs, list_runs, load_run, save_run
+from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic.schemas import ReplayResult, RunComparison
+from pragmatic.ui_flow import (
     build_orchestration_flow_snapshot,
     render_orchestration_flow_html,
 )
 
 
-st.set_page_config(page_title="ThesisGraph", layout="wide")
+st.set_page_config(page_title="Pragmatic", layout="wide")
 
 DEFAULT_DEMO_SCENARIO_ID = "live_full"
 DEFAULT_LIVE_SDK_MODEL = "gpt-5-mini"
@@ -55,7 +55,7 @@ OBSERVABILITY_LABELS = {
 
 
 def main() -> None:
-    st.title("ThesisGraph")
+    st.title("Pragmatic")
 
     with st.sidebar:
         st.header("Run")
@@ -145,7 +145,7 @@ def main() -> None:
 
         st.header("Replay")
         replay_demo = st.checkbox("Replay demo", key="replay_demo")
-        run_clicked = st.button("Run ThesisGraph", type="primary", width="stretch")
+        run_clicked = st.button("Run Pragmatic", type="primary", width="stretch")
         load_latest_live_clicked = st.button("Load Latest Live Run", width="stretch")
 
         st.header("History")

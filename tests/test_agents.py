@@ -5,15 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.agents import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.agents import (
     AgentsSDKCredentialsError,
     LiveAgentsSDKNotEnabled,
     ResearchManager,
     _coerce_research_state,
     build_research_tools,
 )
-from thesisgraph.cli import main
+from pragmatic.cli import main
 
 
 def test_research_manager_deterministic_path_matches_core_loop():
@@ -124,7 +124,7 @@ def test_live_sdk_requires_api_key_when_opted_in(monkeypatch):
 
 def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
     pytest.importorskip("agents")
-    from thesisgraph import agents as agents_module
+    from pragmatic import agents as agents_module
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
@@ -158,7 +158,7 @@ def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
 
 def test_live_sdk_finalizes_missing_generated_evals(monkeypatch):
     pytest.importorskip("agents")
-    from thesisgraph import agents as agents_module
+    from pragmatic import agents as agents_module
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     partial = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
@@ -195,7 +195,7 @@ def test_cli_live_sdk_requires_explicit_allow_flag(capsys):
 
 def test_cli_live_sdk_writes_schema_valid_output(monkeypatch, tmp_path):
     pytest.importorskip("agents")
-    from thesisgraph import agents as agents_module
+    from pragmatic import agents as agents_module
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")

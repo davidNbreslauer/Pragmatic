@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
-from thesisgraph.schemas import Assumption, EvidenceItem, Source
+from pragmatic.schemas import Assumption, EvidenceItem, Source
 
 
 ExtractionMode = Literal["local", "modal"]
@@ -293,7 +293,7 @@ def extract_evidence_with_modal(
     sources: list[Source],
     assumptions: list[Assumption],
 ) -> list[EvidenceItem]:
-    from thesisgraph.modal_jobs import extract_evidence_with_modal as run_modal_extraction
+    from pragmatic.modal_jobs import extract_evidence_with_modal as run_modal_extraction
 
     return run_modal_extraction(sources, assumptions)
 

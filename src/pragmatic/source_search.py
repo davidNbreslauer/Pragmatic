@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from thesisgraph.schemas import ResearchQuestion, Source
+from pragmatic.schemas import ResearchQuestion, Source
 
 
 DEFAULT_WEB_SEARCH_MODEL = "gpt-5-mini"
@@ -45,7 +45,7 @@ def build_web_corpus(
         raise WebSearchUnavailable("OPENAI_API_KEY is required for live web source search.")
 
     resolved_client = client or _openai_client()
-    resolved_model = model or os.getenv("THESISGRAPH_WEB_SEARCH_MODEL") or DEFAULT_WEB_SEARCH_MODEL
+    resolved_model = model or os.getenv("PRAGMATIC_WEB_SEARCH_MODEL") or DEFAULT_WEB_SEARCH_MODEL
     response = _create_web_search_response(
         resolved_client,
         model=resolved_model,
@@ -98,7 +98,7 @@ def _build_source_search_prompt(
         for question in questions
     )
     return f"""
-You are building an evidence corpus for ThesisGraph.
+You are building an evidence corpus for Pragmatic.
 
 Thesis:
 {thesis_text}
@@ -218,7 +218,7 @@ def _normalize_source_cards(
                 tags=_normalize_tags(raw.get("tags"), title, text),
                 evidence_scope=(
                     _clean_string(raw.get("evidence_scope"))
-                    or "Live web search source normalized for ThesisGraph."
+                    or "Live web search source normalized for Pragmatic."
                 )[:300],
                 text=text[:1400],
             )
@@ -257,7 +257,7 @@ def _fetch_source_page(url: str) -> dict[str, str]:
         request = Request(
             url,
             headers={
-                "User-Agent": "ThesisGraph/0.1 evidence-source-fetcher",
+                "User-Agent": "Pragmatic/0.1 evidence-source-fetcher",
                 "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
             },
         )

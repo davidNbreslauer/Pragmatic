@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from thesisgraph.schemas import Assumption, EvidenceItem, ResearchTask, ResearchTaskResult, Source
+from pragmatic.schemas import Assumption, EvidenceItem, ResearchTask, ResearchTaskResult, Source
 
 
 MODAL_TASK_TIMEOUT_SECONDS = 300
@@ -22,14 +22,14 @@ if modal is not None:
     image = (
         modal.Image.debian_slim()
         .pip_install("pydantic>=2.7,<3")
-        .add_local_python_source("thesisgraph")
+        .add_local_python_source("pragmatic")
     )
-    app = modal.App(name="thesisgraph", image=image)
+    app = modal.App(name="pragmatic", image=image)
 
     @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
     def extract_source_job(source: dict[str, Any], assumptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        from thesisgraph.extractors import extract_source_evidence
-        from thesisgraph.schemas import Assumption, Source
+        from pragmatic.extractors import extract_source_evidence
+        from pragmatic.schemas import Assumption, Source
 
         parsed_source = Source.model_validate(source)
         parsed_assumptions = [
@@ -43,8 +43,8 @@ if modal is not None:
 
     @app.function(timeout=MODAL_TASK_TIMEOUT_SECONDS, retries=MODAL_TASK_RETRIES)
     def research_task_job(task: dict[str, Any]) -> dict[str, Any]:
-        from thesisgraph.execution import run_research_task_local
-        from thesisgraph.schemas import ResearchTask
+        from pragmatic.execution import run_research_task_local
+        from pragmatic.schemas import ResearchTask
 
         parsed_task = ResearchTask.model_validate(task)
         return run_research_task_local(parsed_task, backend="modal").model_dump()
@@ -73,7 +73,7 @@ def extract_source_job_local(
     source: dict[str, Any],
     assumptions: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    from thesisgraph.extractors import extract_source_evidence
+    from pragmatic.extractors import extract_source_evidence
 
     parsed_source = Source.model_validate(source)
     parsed_assumptions = [
@@ -91,7 +91,7 @@ def make_research_task_payloads(tasks: list[ResearchTask]) -> list[dict[str, Any
 
 
 def research_task_job_local(task: dict[str, Any]) -> dict[str, Any]:
-    from thesisgraph.execution import run_research_task_local
+    from pragmatic.execution import run_research_task_local
 
     parsed_task = ResearchTask.model_validate(task)
     return run_research_task_local(parsed_task, backend="modal").model_dump()

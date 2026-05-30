@@ -1,6 +1,6 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.agents import ResearchManager
-from thesisgraph.ui_flow import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.agents import ResearchManager
+from pragmatic.ui_flow import (
     build_orchestration_flow_snapshot,
     render_orchestration_flow_html,
 )

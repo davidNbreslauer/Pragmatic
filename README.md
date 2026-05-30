@@ -1,8 +1,8 @@
-# ThesisGraph
+# Pragmatic
 
-ThesisGraph is an autoresearch state machine for testing whether a technical thesis is supported by evidence. The first slice is deterministic: it turns a thesis into assumptions, retrieves from a prepared corpus, extracts typed evidence, detects invalid inference leaps, updates beliefs, and generates evals from failures.
+Pragmatic is an autoresearch state machine for testing whether a technical thesis is supported by evidence. The first slice is deterministic: it turns a thesis into assumptions, retrieves from a prepared corpus, extracts typed evidence, detects invalid inference leaps, updates beliefs, and generates evals from failures.
 
-See [THESISGRAPH_PRD.md](THESISGRAPH_PRD.md) for the product requirements.
+See [PRAGMATIC_PRD.md](PRAGMATIC_PRD.md) for the product requirements.
 
 ## Milestone 1
 
@@ -10,7 +10,7 @@ This scaffold intentionally does not include live web search, Modal, Raindrop Wo
 
 ## Milestone 2
 
-The OpenAI Agents SDK boundary is now represented in `src/thesisgraph/agents.py`. It exposes a `ResearchManager` facade and SDK `@function_tool` wrappers around the deterministic business functions. Tests use the offline deterministic path; live SDK execution requires an API key and should be added to app/CLI surfaces later.
+The OpenAI Agents SDK boundary is now represented in `src/pragmatic/agents.py`. It exposes a `ResearchManager` facade and SDK `@function_tool` wrappers around the deterministic business functions. Tests use the offline deterministic path; live SDK execution requires an API key and should be added to app/CLI surfaces later.
 
 ## Milestone 3
 
@@ -24,19 +24,19 @@ PYTHONPATH=src streamlit run app.py
 
 ## Milestone 4
 
-Evidence extraction received the first local/Modal adapter boundary. `src/thesisgraph/extractors.py` owns deterministic extraction, and `src/thesisgraph/modal_jobs.py` defines the original Modal extraction payload shape. This milestone is now subsumed by the broader execution backend introduced in Milestone 7.
+Evidence extraction received the first local/Modal adapter boundary. `src/pragmatic/extractors.py` owns deterministic extraction, and `src/pragmatic/modal_jobs.py` defines the original Modal extraction payload shape. This milestone is now subsumed by the broader execution backend introduced in Milestone 7.
 
 ## Milestone 5
 
-Observability now has a local/Raindrop adapter boundary. `src/thesisgraph/raindrop_client.py` writes Raindrop-compatible local trace artifacts by default and can send traces through the Raindrop Python SDK when `RAINDROP_WRITE_KEY` is configured. The Streamlit app defaults to local observability and shows the trace ID, backend, status, and generated eval artifact IDs.
+Observability now has a local/Raindrop adapter boundary. `src/pragmatic/raindrop_client.py` writes Raindrop-compatible local trace artifacts by default and can send traces through the Raindrop Python SDK when `RAINDROP_WRITE_KEY` is configured. The Streamlit app defaults to local observability and shows the trace ID, backend, status, and generated eval artifact IDs.
 
 ## Milestone 6
 
-The replay demo is now available through `src/thesisgraph/replay.py`, the OpenAI Agents SDK tool boundary, and the Streamlit `Replay demo` toggle. It simulates a first pass that over-credits benchmark results as direct discovery evidence, generates an eval from that failure, then replays the same thesis with the stricter proxy-evidence boundary so the before/after belief update is visible.
+The replay demo is now available through `src/pragmatic/replay.py`, the OpenAI Agents SDK tool boundary, and the Streamlit `Replay demo` toggle. It simulates a first pass that over-credits benchmark results as direct discovery evidence, generates an eval from that failure, then replays the same thesis with the stricter proxy-evidence boundary so the before/after belief update is visible.
 
 ## Milestone 7
 
-Modal is now modeled as a general research execution backend rather than an extraction-only switch. `src/thesisgraph/execution.py` defines typed research tasks, local execution, Modal-shaped execution, and fallback behavior.
+Modal is now modeled as a general research execution backend rather than an extraction-only switch. `src/pragmatic/execution.py` defines typed research tasks, local execution, Modal-shaped execution, and fallback behavior.
 
 ## Milestone 8
 
@@ -60,25 +60,25 @@ Raindrop/local observability now records an eval workshop, not just a run summar
 
 ## Milestone 13
 
-Runs can now be saved and reloaded locally. `src/thesisgraph/persistence.py` stores complete `ResearchState` payloads under `.thesisgraph/runs`, maintains an index, and compares belief confidence deltas between runs. The Streamlit app adds run-history controls for saving the current run, loading a saved run, and comparing a saved baseline to the current belief graph.
+Runs can now be saved and reloaded locally. `src/pragmatic/persistence.py` stores complete `ResearchState` payloads under `.pragmatic/runs`, maintains an index, and compares belief confidence deltas between runs. The Streamlit app adds run-history controls for saving the current run, loading a saved run, and comparing a saved baseline to the current belief graph.
 
 ## Milestone 14
 
-The deterministic loop now has regression gates. `src/thesisgraph/eval_suite.py` runs fixture-style checks that protect the benchmark-proxy boundary, the prospective-validation support threshold, company-claim evidence classification, eval-workshop failure links, and replay confidence behavior. The Streamlit app adds a `Run Eval Suite` button, and the CLI can run the suite or export generated eval fixtures:
+The deterministic loop now has regression gates. `src/pragmatic/eval_suite.py` runs fixture-style checks that protect the benchmark-proxy boundary, the prospective-validation support threshold, company-claim evidence classification, eval-workshop failure links, and replay confidence behavior. The Streamlit app adds a `Run Eval Suite` button, and the CLI can run the suite or export generated eval fixtures:
 
 ```bash
-PYTHONPATH=src python -m thesisgraph eval-suite --fail-on-fail
-PYTHONPATH=src python -m thesisgraph export-generated-evals .thesisgraph/generated_evals.json
+PYTHONPATH=src python -m pragmatic eval-suite --fail-on-fail
+PYTHONPATH=src python -m pragmatic export-generated-evals .pragmatic/generated_evals.json
 ```
 
 ## Milestone 15
 
-Regression gates can now be frozen into a local eval corpus. `src/thesisgraph/eval_corpus.py` saves versioned known-good snapshots under `.thesisgraph/eval_corpus`, stores an index, and compares current behavior against a saved baseline. Snapshot comparison checks both gate status changes and generated eval fixture drift. The Streamlit app can save a passing snapshot and compare against it from the Evaluation sidebar.
+Regression gates can now be frozen into a local eval corpus. `src/pragmatic/eval_corpus.py` saves versioned known-good snapshots under `.pragmatic/eval_corpus`, stores an index, and compares current behavior against a saved baseline. Snapshot comparison checks both gate status changes and generated eval fixture drift. The Streamlit app can save a passing snapshot and compare against it from the Evaluation sidebar.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph save-eval-snapshot
-PYTHONPATH=src python -m thesisgraph list-eval-snapshots
-PYTHONPATH=src python -m thesisgraph compare-eval-snapshot <snapshot-id> --fail-on-regression
+PYTHONPATH=src python -m pragmatic save-eval-snapshot
+PYTHONPATH=src python -m pragmatic list-eval-snapshots
+PYTHONPATH=src python -m pragmatic compare-eval-snapshot <snapshot-id> --fail-on-regression
 ```
 
 ## Milestone 16
@@ -86,9 +86,9 @@ PYTHONPATH=src python -m thesisgraph compare-eval-snapshot <snapshot-id> --fail-
 The eval corpus now has a committed known-good baseline and a CI-ready regression gate. `eval_baselines/default_v1.json` is generated through the canonical baseline exporter, and `check-eval-baseline` compares the current deterministic loop against that tracked baseline. CI runs tests, bytecode compilation, and the baseline check.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph export-eval-baseline eval_baselines/default_v1.json
-PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
-PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-change
+PYTHONPATH=src python -m pragmatic export-eval-baseline eval_baselines/default_v1.json
+PYTHONPATH=src python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
+PYTHONPATH=src python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-change
 ```
 
 ## Milestone 17
@@ -100,21 +100,21 @@ Prepared-corpus ingestion now carries structured source metadata and determinist
 Live OpenAI Agents SDK orchestration is now available as an explicit opt-in path. `ResearchManager.run_live_sync()` and `run-live-sdk` CLI execution require both `OPENAI_API_KEY` and an explicit `allow_live_sdk` confirmation, then validate the final output as `ResearchState` and record a `live_sdk` `AgentRunRecord`. The Streamlit app exposes `live_sdk` mode behind an `Enable live SDK calls` checkbox.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph run-live-sdk --allow-live-sdk --observability off --output .thesisgraph/live_state.json
+PYTHONPATH=src python -m pragmatic run-live-sdk --allow-live-sdk --observability off --output .pragmatic/live_state.json
 ```
 
 ## Milestone 19
 
-Live SDK execution now has a guardrailed harness. `live-run-harness` defaults to dry run, records whether credentials are available without exposing them, enforces prepared-corpus-only/no-web-search policy, caps max turns and timeout, and writes a replayable JSON artifact under `.thesisgraph/live_runs`. The Streamlit `live_sdk` mode now shows the same harness status before any real API call.
+Live SDK execution now has a guardrailed harness. `live-run-harness` defaults to dry run, records whether credentials are available without exposing them, enforces prepared-corpus-only/no-web-search policy, caps max turns and timeout, and writes a replayable JSON artifact under `.pragmatic/live_runs`. The Streamlit `live_sdk` mode now shows the same harness status before any real API call.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph live-run-harness
-PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --max-turns 4 --timeout-seconds 60 --observability local
+PYTHONPATH=src python -m pragmatic live-run-harness
+PYTHONPATH=src python -m pragmatic live-run-harness --live --allow-live-sdk --max-turns 4 --timeout-seconds 60 --observability local
 ```
 
 ## Milestone 20
 
-Modal execution now ships the local `thesisgraph` package into the remote worker image, applies worker timeout/retry guardrails, and maps typed `ResearchTask` payloads through Modal with ordered parallel fan-out. Individual remote worker exceptions are converted into typed failed `ResearchTaskResult` records, while full Modal unavailability still falls back to the local executor when requested. Batch metadata now records task counts, success/failure counts, task types, Modal app name, timeout, and retry settings.
+Modal execution now ships the local `pragmatic` package into the remote worker image, applies worker timeout/retry guardrails, and maps typed `ResearchTask` payloads through Modal with ordered parallel fan-out. Individual remote worker exceptions are converted into typed failed `ResearchTaskResult` records, while full Modal unavailability still falls back to the local executor when requested. Batch metadata now records task counts, success/failure counts, task types, Modal app name, timeout, and retry settings.
 
 ## Milestone 21
 
@@ -129,8 +129,8 @@ OpenAI Agents SDK scripted orchestration now runs through visible specialist too
 Live-demo integration readiness now has a first-class doctor. `run_integration_doctor()` checks OpenAI Agents SDK import/credential readiness, Modal installation/profile readiness with an optional live remote smoke task, and local Raindrop Workshop bundle generation without requiring a hosted write key. The CLI and Streamlit app expose the same checks so the demo can show which layers are live versus skipped or unavailable.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph doctor
-PYTHONPATH=src python -m thesisgraph doctor --run-openai-live --run-modal-remote
+PYTHONPATH=src python -m pragmatic doctor
+PYTHONPATH=src python -m pragmatic doctor --run-openai-live --run-modal-remote
 ```
 
 ## Milestone 24
@@ -146,7 +146,7 @@ Raindrop Workshop artifacts now include a connection layer that makes the demo t
 The live SDK harness now produces a demo-readiness proof. Successful live runs include a `LiveRunProof` showing schema validation, prepared-corpus guardrails, Modal task counts, Workshop observability, trace paths, generated eval counts, invalid leap counts, and replay outcome counts. `--require-demo-proof` can fail a live run when the requested Modal/Workshop proof is missing, and the Streamlit live harness panel shows the same proof metrics.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph live-run-harness --live --allow-live-sdk --execution-backend modal --observability local --require-demo-proof
+PYTHONPATH=src python -m pragmatic live-run-harness --live --allow-live-sdk --execution-backend modal --observability local --require-demo-proof
 ```
 
 ## Milestone 27
@@ -155,18 +155,18 @@ The Streamlit app now opens as a hackathon cockpit. Curated demo scenarios set t
 
 ## Milestone 28
 
-The repo now includes a curated scenario pack in `src/thesisgraph/demo.py`: Core Evidence Loop, Modal Fan-Out, Failure To Eval Replay, and Live SDK Guarded. The same scenarios are exposed through the app and the CLI.
+The repo now includes a curated scenario pack in `src/pragmatic/demo.py`: Core Evidence Loop, Modal Fan-Out, Failure To Eval Replay, and Live SDK Guarded. The same scenarios are exposed through the app and the CLI.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph demo-scenarios
+PYTHONPATH=src python -m pragmatic demo-scenarios
 ```
 
 ## Milestone 29
 
-Demo reliability now has a one-command smoke harness. It runs the integration doctor, core loop, replay demo, and regression gates, then writes replayable artifacts under `.thesisgraph/demo`.
+Demo reliability now has a one-command smoke harness. It runs the integration doctor, core loop, replay demo, and regression gates, then writes replayable artifacts under `.pragmatic/demo`.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph demo-smoke --fail-on-fail
+PYTHONPATH=src python -m pragmatic demo-smoke --fail-on-fail
 ```
 
 ## Milestone 30
@@ -178,7 +178,7 @@ The hackathon demo script is tracked in `docs/hackathon_demo_script.md`, includi
 Arbitrary-thesis research now has a real-source path. Non-demo theses are decomposed into generic evidence assumptions, the OpenAI web-search adapter can normalize live search results into `Source` records, generic extraction works for arbitrary source IDs, and the skeptic/verifier layers generate failure/eval artifacts for proxy-to-application leaps. The Streamlit app exposes `Evidence search`, `Allow live web search`, web-search model, and max-source controls, and the Sources panel lets the run output be inspected before evidence, belief updates, and Raindrop Workshop traces.
 
 ```bash
-PYTHONPATH=src python -m thesisgraph live-run-harness \
+PYTHONPATH=src python -m pragmatic live-run-harness \
   --live \
   --allow-live-sdk \
   --source-mode web \

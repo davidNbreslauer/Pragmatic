@@ -1,13 +1,13 @@
 import json
 from types import SimpleNamespace
 
-from thesisgraph.research_loop import (
+from pragmatic.research_loop import (
     decompose_thesis,
     generate_initial_questions,
     run_research_loop,
 )
-from thesisgraph.schemas import ResearchState, Source, Thesis
-from thesisgraph.source_search import build_web_corpus
+from pragmatic.schemas import ResearchState, Source, Thesis
+from pragmatic.source_search import build_web_corpus
 
 
 SPIDER_THESIS = "Can spider silk make a bullet proof vest?"
@@ -106,7 +106,7 @@ def test_research_loop_can_use_mock_live_web_corpus(monkeypatch):
         assert kwargs["max_sources"] == 4
         return mock_sources
 
-    monkeypatch.setattr("thesisgraph.research_loop.build_web_corpus", fake_build_web_corpus)
+    monkeypatch.setattr("pragmatic.research_loop.build_web_corpus", fake_build_web_corpus)
 
     state = run_research_loop(
         SPIDER_THESIS,

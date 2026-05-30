@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from thesisgraph.schemas import GeneratedEval, InvalidLeap
+from pragmatic.schemas import GeneratedEval, InvalidLeap
 
 
 def generate_evals_from_failures(invalid_leaps: list[InvalidLeap]) -> list[GeneratedEval]:

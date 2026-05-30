@@ -7,14 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from thesisgraph.eval_workshop import build_eval_workshop
-from thesisgraph.schemas import ObservabilityRecord, ResearchState
+from pragmatic.eval_workshop import build_eval_workshop
+from pragmatic.schemas import ObservabilityRecord, ResearchState
 
 
 ObservabilityMode = Literal["local", "raindrop", "off"]
 
-DEFAULT_TRACE_DIR = Path(".thesisgraph") / "traces"
-DEFAULT_WORKSHOP_DIR = Path(".thesisgraph") / "workshops"
+DEFAULT_TRACE_DIR = Path(".pragmatic") / "traces"
+DEFAULT_WORKSHOP_DIR = Path(".pragmatic") / "workshops"
 
 
 def record_research_run(
@@ -24,7 +24,7 @@ def record_research_run(
     trace_dir: str | Path | None = None,
     fallback_to_local: bool = True,
 ) -> ObservabilityRecord:
-    trace_id = f"tg_{uuid.uuid4().hex[:12]}"
+    trace_id = f"prag_{uuid.uuid4().hex[:12]}"
 
     if mode == "off":
         return ObservabilityRecord(
@@ -173,8 +173,8 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
     trace_payload = build_trace_payload(state, trace_id=trace_id)
     workshop_payload = build_workshop_payload(state, trace_id=trace_id)
     interaction = raindrop.begin(
-        user_id="thesisgraph-local",
-        event="thesisgraph_research_run",
+        user_id="pragmatic-local",
+        event="pragmatic_research_run",
         event_id=trace_id,
         input=state.thesis.text,
         convo_id=trace_id,
@@ -207,7 +207,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     for event in state.trace_events:
         interaction.track_tool(
-            name=f"thesisgraph.{event.stage}",
+            name=f"pragmatic.{event.stage}",
             input=event.metadata,
             output=event.message,
             duration_ms=0,
@@ -216,7 +216,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     for span in eval_workshop.task_spans:
         interaction.track_tool(
-            name=f"thesisgraph.task.{span.task_type}",
+            name=f"pragmatic.task.{span.task_type}",
             input={
                 "task_id": span.task_id,
                 "source_ids": span.source_ids,
@@ -235,7 +235,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     for generated_eval in state.generated_evals:
         interaction.track_tool(
-            name="thesisgraph.generated_eval",
+            name="pragmatic.generated_eval",
             input={
                 "failure_observed": generated_eval.failure_observed,
                 "root_cause": generated_eval.root_cause,
@@ -250,7 +250,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     for link in eval_workshop.failure_eval_links:
         interaction.track_tool(
-            name=f"thesisgraph.eval_workshop.{link.link_type}",
+            name=f"pragmatic.eval_workshop.{link.link_type}",
             input={
                 "source_id": link.source_id,
                 "affected_assumption_ids": link.affected_assumption_ids,
@@ -263,7 +263,7 @@ def _record_raindrop_sdk(state: ResearchState, *, trace_id: str) -> Observabilit
 
     for outcome in eval_workshop.replay_outcomes:
         interaction.track_tool(
-            name="thesisgraph.eval_workshop.replay_outcome",
+            name="pragmatic.eval_workshop.replay_outcome",
             input={
                 "assumption_id": outcome.assumption_id,
                 "before_confidence": outcome.before_confidence,
@@ -394,7 +394,7 @@ def _eval_artifacts(state: ResearchState) -> list[dict]:
 def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
     return [
         {
-            "event": "thesisgraph.agent_step",
+            "event": "pragmatic.agent_step",
             "artifact_id": step.id,
             "source_id": step.tool_name,
             "status": step.status,
@@ -403,7 +403,7 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
         for step in (state.agent_run.steps if state.agent_run else [])
     ] + [
         {
-            "event": "thesisgraph.task_span",
+            "event": "pragmatic.task_span",
             "artifact_id": span.id,
             "source_id": span.task_id,
             "status": span.status,
@@ -414,7 +414,7 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
         for span in eval_workshop.task_spans
     ] + [
         {
-            "event": "thesisgraph.failure_artifact",
+            "event": "pragmatic.failure_artifact",
             "artifact_id": artifact["artifact_id"],
             "source_id": None,
             "status": "recorded",
@@ -423,7 +423,7 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
         for artifact in _failure_artifacts(state)
     ] + [
         {
-            "event": "thesisgraph.failure_to_eval",
+            "event": "pragmatic.failure_to_eval",
             "artifact_id": link.id,
             "source_id": link.source_id,
             "target_id": link.target_id,
@@ -432,7 +432,7 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
         for link in eval_workshop.failure_eval_links
     ] + [
         {
-            "event": "thesisgraph.generated_eval",
+            "event": "pragmatic.generated_eval",
             "artifact_id": generated_eval.id,
             "source_id": None,
             "status": "recorded",
@@ -440,7 +440,7 @@ def _raindrop_event_plan(state: ResearchState, eval_workshop) -> list[dict]:
         for generated_eval in state.generated_evals
     ] + [
         {
-            "event": "thesisgraph.replay_outcome",
+            "event": "pragmatic.replay_outcome",
             "artifact_id": outcome.id,
             "source_id": outcome.generated_eval_id,
             "status": "passed" if outcome.passed else "failed",

@@ -1,21 +1,21 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.corpus import load_corpus
-from thesisgraph.execution import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.corpus import load_corpus
+from pragmatic.execution import (
     LocalResearchExecutor,
     build_source_parse_tasks,
     build_source_extraction_tasks,
     execute_research_tasks,
     run_research_task_local,
 )
-from thesisgraph.modal_jobs import (
+from pragmatic.modal_jobs import (
     MODAL_TASK_RETRIES,
     MODAL_TASK_TIMEOUT_SECONDS,
     make_research_task_payloads,
     research_task_job_local,
     run_research_tasks_with_modal,
 )
-from thesisgraph.research_loop import decompose_thesis, run_research_loop
-from thesisgraph.schemas import EvidenceItem, ResearchTaskResult
+from pragmatic.research_loop import decompose_thesis, run_research_loop
+from pragmatic.schemas import EvidenceItem, ResearchTaskResult
 
 
 def test_local_research_executor_runs_typed_source_tasks():
@@ -88,9 +88,9 @@ def test_modal_remote_runner_maps_payloads_and_preserves_modal_backend(monkeypat
                 run_research_task_local(tasks[0], backend="modal").model_dump()
             ]
 
-    monkeypatch.setattr("thesisgraph.modal_jobs.modal", object())
-    monkeypatch.setattr("thesisgraph.modal_jobs.app", FakeApp())
-    monkeypatch.setattr("thesisgraph.modal_jobs.research_task_job", FakeRemoteJob())
+    monkeypatch.setattr("pragmatic.modal_jobs.modal", object())
+    monkeypatch.setattr("pragmatic.modal_jobs.app", FakeApp())
+    monkeypatch.setattr("pragmatic.modal_jobs.research_task_job", FakeRemoteJob())
 
     results = run_research_tasks_with_modal(tasks)
 
@@ -120,9 +120,9 @@ def test_modal_remote_runner_converts_worker_exception_to_failed_result(monkeypa
             del payloads, kwargs
             return [RuntimeError("worker boom")]
 
-    monkeypatch.setattr("thesisgraph.modal_jobs.modal", object())
-    monkeypatch.setattr("thesisgraph.modal_jobs.app", FakeApp())
-    monkeypatch.setattr("thesisgraph.modal_jobs.research_task_job", FakeRemoteJob())
+    monkeypatch.setattr("pragmatic.modal_jobs.modal", object())
+    monkeypatch.setattr("pragmatic.modal_jobs.app", FakeApp())
+    monkeypatch.setattr("pragmatic.modal_jobs.research_task_job", FakeRemoteJob())
 
     results = run_research_tasks_with_modal(tasks)
 
@@ -141,7 +141,7 @@ def test_modal_execution_backend_falls_back_to_local(monkeypatch):
         raise RuntimeError("modal unavailable in test")
 
     monkeypatch.setattr(
-        "thesisgraph.modal_jobs.run_research_tasks_with_modal",
+        "pragmatic.modal_jobs.run_research_tasks_with_modal",
         failing_modal_runner,
     )
 
@@ -165,7 +165,7 @@ def test_modal_execution_backend_records_remote_batch_metadata(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "thesisgraph.modal_jobs.run_research_tasks_with_modal",
+        "pragmatic.modal_jobs.run_research_tasks_with_modal",
         fake_modal_runner,
     )
 

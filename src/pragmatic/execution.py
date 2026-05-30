@@ -5,8 +5,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from thesisgraph.extractors import extract_source_evidence
-from thesisgraph.schemas import (
+from pragmatic.extractors import extract_source_evidence
+from pragmatic.schemas import (
     Assumption,
     ExecutionBackend,
     ResearchBatchResult,
@@ -132,7 +132,7 @@ class ModalResearchExecutor:
     backend: ExecutionBackend = "modal"
 
     def run_batch(self, tasks: list[ResearchTask]) -> ResearchBatchResult:
-        from thesisgraph.modal_jobs import (
+        from pragmatic.modal_jobs import (
             MODAL_TASK_RETRIES,
             MODAL_TASK_TIMEOUT_SECONDS,
             run_research_tasks_with_modal,
@@ -145,7 +145,7 @@ class ModalResearchExecutor:
             results=results,
             metadata={
                 **_batch_metadata(tasks, results),
-                "remote_app": "thesisgraph",
+                "remote_app": "pragmatic",
                 "worker_timeout_seconds": str(MODAL_TASK_TIMEOUT_SECONDS),
                 "worker_retries": str(MODAL_TASK_RETRIES),
             },
@@ -266,7 +266,7 @@ def _extract_evidence(task: ResearchTask, backend: ExecutionBackend) -> Research
 
 
 def _cross_check(task: ResearchTask, backend: ExecutionBackend) -> ResearchTaskResult:
-    from thesisgraph.cross_checking import detect_evidence_conflicts
+    from pragmatic.cross_checking import detect_evidence_conflicts
 
     conflicts = detect_evidence_conflicts(task.sources, task.evidence_items)
     return ResearchTaskResult(
@@ -281,7 +281,7 @@ def _cross_check(task: ResearchTask, backend: ExecutionBackend) -> ResearchTaskR
 
 
 def _verify_decisive_test(task: ResearchTask, backend: ExecutionBackend) -> ResearchTaskResult:
-    from thesisgraph.verifiers import run_mock_verifier
+    from pragmatic.verifiers import run_mock_verifier
 
     if task.decisive_test is None:
         raise ValueError("verify_decisive_test tasks require a decisive test.")

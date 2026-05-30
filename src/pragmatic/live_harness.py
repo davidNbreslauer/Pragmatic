@@ -7,15 +7,15 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from thesisgraph.agents import (
+from pragmatic.agents import (
     AgentsSDKCredentialsError,
     LiveAgentsSDKNotEnabled,
     ResearchManager,
 )
-from thesisgraph.extractors import ExtractionMode
-from thesisgraph.raindrop_client import ObservabilityMode
-from thesisgraph.research_loop import DEFAULT_THESIS
-from thesisgraph.schemas import (
+from pragmatic.extractors import ExtractionMode
+from pragmatic.raindrop_client import ObservabilityMode
+from pragmatic.research_loop import DEFAULT_THESIS
+from pragmatic.schemas import (
     ExecutionBackend,
     LiveRunGuardrails,
     LiveRunProof,
@@ -26,7 +26,7 @@ from thesisgraph.schemas import (
 )
 
 
-DEFAULT_LIVE_RUN_DIR = Path(".thesisgraph") / "live_runs"
+DEFAULT_LIVE_RUN_DIR = Path(".pragmatic") / "live_runs"
 
 
 def run_live_harness_sync(

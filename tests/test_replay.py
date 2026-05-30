@@ -1,5 +1,5 @@
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic import DEFAULT_THESIS
+from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
 
 
 def test_replay_demo_treats_benchmark_evidence_more_strictly_after_eval():

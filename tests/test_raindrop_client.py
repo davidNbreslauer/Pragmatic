@@ -1,12 +1,12 @@
 import json
 
-from thesisgraph import DEFAULT_THESIS
-from thesisgraph.raindrop_client import (
+from pragmatic import DEFAULT_THESIS
+from pragmatic.raindrop_client import (
     build_trace_payload,
     build_workshop_payload,
     record_research_run,
 )
-from thesisgraph.research_loop import run_research_loop
+from pragmatic.research_loop import run_research_loop
 
 
 def test_local_observability_writes_trace_artifact(tmp_path):
@@ -79,11 +79,11 @@ def test_raindrop_mode_falls_back_to_local_without_write_key(tmp_path, monkeypat
 
 
 def test_trace_payload_links_failures_to_evals_and_tasks():
-    from thesisgraph import ResearchManager
+    from pragmatic import ResearchManager
 
     state = ResearchManager().run_sdk_orchestrated(DEFAULT_THESIS, observability_mode="off")
 
-    payload = build_trace_payload(state, trace_id="tg_test")
+    payload = build_trace_payload(state, trace_id="prag_test")
     link_types = {link["link_type"] for link in payload["failure_eval_links"]}
 
     assert payload["agent_steps"]
@@ -99,7 +99,7 @@ def test_trace_payload_links_failures_to_evals_and_tasks():
 def test_workshop_payload_is_failure_eval_replay_bundle():
     state = run_research_loop(DEFAULT_THESIS, observability_mode="off")
 
-    payload = build_workshop_payload(state, trace_id="tg_test")
+    payload = build_workshop_payload(state, trace_id="prag_test")
     eval_artifact = payload["eval_artifacts"][0]
     failure_ids = {artifact["artifact_id"] for artifact in payload["failure_artifacts"]}
 
@@ -109,17 +109,17 @@ def test_workshop_payload_is_failure_eval_replay_bundle():
     assert eval_artifact["artifact_type"] == "generated_eval"
     assert eval_artifact["source_failure"]["failure_artifact_id"] in failure_ids
     assert any(
-        event["event"] == "thesisgraph.failure_to_eval"
+        event["event"] == "pragmatic.failure_to_eval"
         for event in payload["raindrop_event_plan"]
     )
 
 
 def test_workshop_payload_connects_sdk_modal_failure_eval_replay():
-    from thesisgraph import ResearchManager
-    from thesisgraph.replay import run_replay_demo
+    from pragmatic import ResearchManager
+    from pragmatic.replay import run_replay_demo
 
     state = ResearchManager().run_sdk_orchestrated(DEFAULT_THESIS, observability_mode="off")
-    payload = build_workshop_payload(state, trace_id="tg_test")
+    payload = build_workshop_payload(state, trace_id="prag_test")
 
     assert payload["specialist_step_artifacts"]
     assert payload["task_artifacts"]
@@ -129,19 +129,19 @@ def test_workshop_payload_connects_sdk_modal_failure_eval_replay():
         for row in payload["connection_rows"]
     )
     assert any(
-        event["event"] == "thesisgraph.agent_step"
+        event["event"] == "pragmatic.agent_step"
         for event in payload["raindrop_event_plan"]
     )
     assert any(
-        event["event"] == "thesisgraph.failure_artifact"
+        event["event"] == "pragmatic.failure_artifact"
         for event in payload["raindrop_event_plan"]
     )
 
     replay = run_replay_demo(DEFAULT_THESIS, observability_mode="off")
-    replay_payload = build_workshop_payload(replay.replay_pass, trace_id="tg_replay")
+    replay_payload = build_workshop_payload(replay.replay_pass, trace_id="prag_replay")
     replay_events = {
         event["event"]
         for event in replay_payload["raindrop_event_plan"]
     }
-    assert "thesisgraph.replay_outcome" in replay_events
+    assert "pragmatic.replay_outcome" in replay_events
     assert any(row["replay_id"] for row in replay_payload["connection_rows"])

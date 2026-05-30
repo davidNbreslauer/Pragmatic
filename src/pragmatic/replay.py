@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from thesisgraph.belief_update import apply_belief_updates, update_beliefs
-from thesisgraph.decisive_tests import propose_decisive_tests
-from thesisgraph.eval_writer import generate_evals_from_failures
-from thesisgraph.eval_workshop import build_eval_workshop
-from thesisgraph.extractors import ExtractionMode
-from thesisgraph.invalid_leaps import detect_invalid_leaps
-from thesisgraph.raindrop_client import ObservabilityMode, record_research_run
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.belief_update import apply_belief_updates, update_beliefs
+from pragmatic.decisive_tests import propose_decisive_tests
+from pragmatic.eval_writer import generate_evals_from_failures
+from pragmatic.eval_workshop import build_eval_workshop
+from pragmatic.extractors import ExtractionMode
+from pragmatic.invalid_leaps import detect_invalid_leaps
+from pragmatic.raindrop_client import ObservabilityMode, record_research_run
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.schemas import (
     ExecutionBackend,
     ReplayComparison,
     ReplayResult,

@@ -1,9 +1,9 @@
-"""ThesisGraph deterministic MVP scaffold."""
+"""Pragmatic deterministic MVP scaffold."""
 
-from thesisgraph.agents import ResearchManager
-from thesisgraph.demo import demo_scenario_by_id, demo_scenarios, run_demo_smoke
-from thesisgraph.doctor import run_integration_doctor
-from thesisgraph.eval_corpus import (
+from pragmatic.agents import ResearchManager
+from pragmatic.demo import demo_scenario_by_id, demo_scenarios, run_demo_smoke
+from pragmatic.doctor import run_integration_doctor
+from pragmatic.eval_corpus import (
     compare_eval_baseline,
     compare_eval_snapshot,
     compare_eval_snapshot_by_id,
@@ -15,16 +15,16 @@ from thesisgraph.eval_corpus import (
     save_eval_snapshot,
     write_eval_baseline,
 )
-from thesisgraph.eval_suite import (
+from pragmatic.eval_suite import (
     evaluate_regression_cases,
     export_generated_eval_cases,
     run_eval_suite,
 )
-from thesisgraph.live_harness import run_live_harness, run_live_harness_sync
-from thesisgraph.persistence import compare_runs, list_runs, load_run, save_run
-from thesisgraph.replay import run_replay_demo
-from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
-from thesisgraph.schemas import (
+from pragmatic.live_harness import run_live_harness, run_live_harness_sync
+from pragmatic.persistence import compare_runs, list_runs, load_run, save_run
+from pragmatic.replay import run_replay_demo
+from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.schemas import (
     EvalSnapshotComparison,
     EvalSnapshotSummary,
     IntegrationDoctorResult,

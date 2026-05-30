@@ -3,23 +3,23 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from thesisgraph.belief_update import apply_belief_updates, update_beliefs
-from thesisgraph.corpus import load_corpus, rank_sources_for_questions
-from thesisgraph.decisive_tests import propose_decisive_tests
-from thesisgraph.eval_writer import generate_evals_from_failures
-from thesisgraph.eval_workshop import build_eval_workshop
-from thesisgraph.execution import (
+from pragmatic.belief_update import apply_belief_updates, update_beliefs
+from pragmatic.corpus import load_corpus, rank_sources_for_questions
+from pragmatic.decisive_tests import propose_decisive_tests
+from pragmatic.eval_writer import generate_evals_from_failures
+from pragmatic.eval_workshop import build_eval_workshop
+from pragmatic.execution import (
     build_cross_check_task,
     build_source_extraction_tasks,
     build_source_parse_tasks,
     execute_research_tasks,
 )
-from thesisgraph.extractors import ExtractionMode
-from thesisgraph.invalid_leaps import detect_invalid_leaps
-from thesisgraph.raindrop_client import ObservabilityMode, record_research_run
-from thesisgraph.source_search import build_web_corpus
-from thesisgraph.verifiers import build_verifier_tasks
-from thesisgraph.schemas import (
+from pragmatic.extractors import ExtractionMode
+from pragmatic.invalid_leaps import detect_invalid_leaps
+from pragmatic.raindrop_client import ObservabilityMode, record_research_run
+from pragmatic.source_search import build_web_corpus
+from pragmatic.verifiers import build_verifier_tasks
+from pragmatic.schemas import (
     Assumption,
     ExecutionBackend,
     ResearchQuestion,

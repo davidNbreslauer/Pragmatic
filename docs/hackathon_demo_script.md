@@ -1,10 +1,10 @@
-# ThesisGraph Hackathon Demo Script
+# Pragmatic Hackathon Demo Script
 
 ## Setup
 
 ```bash
-.venv/bin/python -m thesisgraph doctor --run-openai-live --run-modal-remote
-.venv/bin/python -m thesisgraph demo-smoke --run-modal-remote --fail-on-fail
+.venv/bin/python -m pragmatic doctor --run-openai-live --run-modal-remote
+.venv/bin/python -m pragmatic demo-smoke --run-modal-remote --fail-on-fail
 .venv/bin/python -m streamlit run app.py --server.port 8501
 ```
 
@@ -16,7 +16,7 @@
 
 2. Switch to `Modal Fan-Out`.
    - Run the Integration Doctor with remote Modal enabled.
-   - Run ThesisGraph with execution set to `modal`.
+   - Run Pragmatic with execution set to `modal`.
    - Show `Research Execution Tasks` and the Modal task count.
 
 3. Show the Raindrop Workshop story.
@@ -36,4 +36,4 @@
 
 ## Backup
 
-If any live service flakes, use the latest artifacts under `.thesisgraph/demo` and `.thesisgraph/doctor`.
+If any live service flakes, use the latest artifacts under `.pragmatic/demo` and `.pragmatic/doctor`.

@@ -23,8 +23,15 @@ from pragmatic.schemas import LiveRunResult, ResearchState
 
 DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_THESIS = "Spider silk for bullet proof vests"
+MAX_STORED_EVENTS_PER_JOB = 2000
 RUNS: dict[str, dict[str, Any]] = {}
 RUN_LOCK = threading.Lock()
+
+# Realtime cockpit event taxonomy:
+# - coarse events keep the stable {stage,status,message,metadata,index} envelope.
+# - rich events add top-level kind plus metadata payloads:
+#   reasoning.delta, tool.call, tool.output, fanout.spawn, fanout.task,
+#   node.add, edge.add, node.confidence, counter.
 
 
 def _now() -> str:
@@ -55,12 +62,17 @@ def _append_event(job_id: str, event: dict[str, Any]) -> None:
         "stage": event.get("stage", "run"),
         "status": event.get("status", "running"),
         "message": event.get("message", ""),
+        "kind": event.get("kind") or (event.get("metadata") or {}).get("kind"),
         "metadata": event.get("metadata") or {},
     }
     with RUN_LOCK:
         job = RUNS[job_id]
+        if job["status"] in {"succeeded", "failed"}:
+            return
         normalized["index"] = len(job["events"]) + 1
         job["events"].append(normalized)
+        if len(job["events"]) > MAX_STORED_EVENTS_PER_JOB:
+            job["events"] = job["events"][-MAX_STORED_EVENTS_PER_JOB:]
         job["updated_at"] = normalized["created_at"]
 
 
@@ -268,6 +280,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
                 observability_mode=config["observability_mode"],
             )
 
+        _append_state_cockpit_events(job_id, state)
         summary = _summarize_state(state)
         result = {
             "elapsed_seconds": round(time.monotonic() - started, 3),
@@ -296,6 +309,99 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
             },
         )
         _set_job_status(job_id, "failed", error=f"{type(exc).__name__}: {exc}")
+
+
+def _append_state_cockpit_events(job_id: str, state: ResearchState) -> None:
+    """Emit a final graph snapshot for deterministic/scripted/recovered runs."""
+
+    seen_nodes: set[str] = set()
+
+    def add_node(node_id: str, node_kind: str, label: str, confidence: float | None = None) -> None:
+        if node_id in seen_nodes:
+            return
+        seen_nodes.add(node_id)
+        metadata: dict[str, Any] = {
+            "id": node_id,
+            "node_kind": node_kind,
+            "label": label[:140],
+        }
+        if confidence is not None:
+            metadata["confidence"] = confidence
+        _append_event(
+            job_id,
+            {
+                "stage": "graph.snapshot",
+                "status": "created",
+                "message": f"Added {node_kind} node.",
+                "kind": "node.add",
+                "metadata": metadata,
+            },
+        )
+
+    def add_edge(from_id: str, to_id: str, relation: str) -> None:
+        _append_event(
+            job_id,
+            {
+                "stage": "graph.snapshot",
+                "status": "created",
+                "message": f"Linked {from_id} to {to_id}.",
+                "kind": "edge.add",
+                "metadata": {"from": from_id, "to": to_id, "relation": relation},
+            },
+        )
+
+    for assumption in state.assumptions:
+        add_node(assumption.id, "assumption", assumption.text, assumption.confidence)
+    for source in state.sources:
+        add_node(source.id, "source", source.title)
+    for item in state.evidence_items:
+        add_node(item.id, "evidence", item.claim_supported, item.confidence)
+        add_edge(item.source_id, item.id, "contradicts" if item.evidence_type == "contradictory" else "supports")
+        for assumption_id in item.assumption_ids:
+            relation = "proxy_only" if item.evidence_type in {"proxy", "indirect"} else "supports"
+            if item.evidence_type == "contradictory":
+                relation = "contradicts"
+            add_edge(item.id, assumption_id, relation)
+    for update in state.belief_updates:
+        _append_event(
+            job_id,
+            {
+                "stage": "graph.snapshot",
+                "status": "updated",
+                "message": f"Updated confidence for {update.assumption_id}.",
+                "kind": "node.confidence",
+                "metadata": {
+                    "id": update.assumption_id,
+                    "from": update.previous_confidence,
+                    "to": update.new_confidence,
+                    "reason": update.rationale,
+                },
+            },
+        )
+    for test in state.decisive_tests:
+        add_node(test.id, "test", test.test)
+        for assumption_id in test.would_resolve:
+            add_edge(assumption_id, test.id, "tests")
+    for generated_eval in state.generated_evals:
+        add_node(generated_eval.id, "eval", generated_eval.eval_rule)
+        if generated_eval.source_failure_id:
+            add_edge(generated_eval.source_failure_id, generated_eval.id, "becomes_eval")
+    _append_event(
+        job_id,
+        {
+            "stage": "graph.snapshot",
+            "status": "updated",
+            "message": "Updated research counters.",
+            "kind": "counter",
+            "metadata": {
+                "sources": len(state.sources),
+                "evidence": len(state.evidence_items),
+                "leaps": len(state.invalid_leaps),
+                "conflicts": len(state.evidence_conflicts),
+                "tests": len(state.decisive_tests),
+            },
+        },
+    )
 
 
 def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
@@ -420,135 +526,205 @@ def _json_for_script(value: Any) -> str:
     return html.escape(json.dumps(value), quote=False)
 
 
-INDEX_HTML = f"""<!doctype html>
+INDEX_HTML = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pragmatic</title>
   <style>
-    :root {{
-      --bg: #f8f9f7;
+    :root {
+      --bg: #f6f7f5;
       --panel: #ffffff;
-      --ink: #17212b;
+      --ink: #18212b;
       --muted: #667085;
-      --line: #d7dce2;
-      --accent: #ef5550;
-      --agent: #496ddb;
-      --source: #60744d;
-      --worker: #168a7a;
-      --evidence: #b06b20;
-      --failure: #c2415b;
-      --eval: #7b55c7;
-      --belief: #2f7d47;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
+      --line: #d9dee5;
+      --accent: #d84f45;
+      --blue: #4267c8;
+      --green: #2f7d47;
+      --amber: #b97716;
+      --red: #c2415b;
+      --teal: #168a7a;
+      --violet: #6d56bf;
+    }
+    * { box-sizing: border-box; }
+    body {
       margin: 0;
       background: var(--bg);
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }}
-    main {{ max-width: 1180px; margin: 0 auto; padding: 30px 18px 60px; }}
-    .brand {{ font-size: 12px; font-weight: 800; color: #4b5563; text-transform: uppercase; }}
-    h1 {{ margin: 18px 0 8px; font-size: clamp(36px, 6vw, 62px); line-height: 1; letter-spacing: 0; }}
-    .sub {{ color: var(--muted); font-size: 17px; max-width: 760px; }}
-    .ask {{
-      margin-top: 22px;
+    }
+    main { max-width: 1440px; margin: 0 auto; padding: 24px 18px 60px; }
+    .brand { font-size: 12px; font-weight: 800; color: #4b5563; text-transform: uppercase; }
+    h1 { margin: 14px 0 8px; font-size: clamp(34px, 5vw, 58px); line-height: 1; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    h3 { margin: 0 0 10px; font-size: 15px; }
+    .sub { color: var(--muted); font-size: 16px; max-width: 850px; }
+    .ask, .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 16px;
-    }}
-    label {{ display: block; font-weight: 700; margin-bottom: 8px; }}
-    textarea {{
+    }
+    .ask { margin-top: 18px; padding: 16px; }
+    label { display: block; font-weight: 700; margin-bottom: 8px; }
+    textarea {
       width: 100%;
-      min-height: 96px;
+      min-height: 86px;
       resize: vertical;
       border: 1px solid #e1e5ea;
       border-radius: 7px;
-      padding: 14px;
+      padding: 13px;
       font: inherit;
       background: #f2f4f7;
       color: var(--ink);
-    }}
-    .actions {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }}
-    button {{
+    }
+    button {
       border: 1px solid var(--line);
       border-radius: 7px;
-      padding: 12px 18px;
+      padding: 11px 17px;
       background: #fff;
       color: var(--ink);
       font-weight: 760;
       cursor: pointer;
-    }}
-    button.primary {{ background: var(--accent); color: #fff; border-color: var(--accent); min-width: 160px; }}
-    button:disabled {{ opacity: 0.55; cursor: wait; }}
-    .chips {{ display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }}
-    .chip {{ border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; background: #fff; color: #344054; font-size: 13px; }}
-    details {{ margin-top: 12px; color: var(--muted); }}
-    details .grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }}
-    select, input {{ width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fff; font: inherit; }}
-    .layout {{ display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr); gap: 16px; margin-top: 28px; }}
-    .panel {{ background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }}
-    h2 {{ margin: 0 0 14px; font-size: 28px; letter-spacing: 0; }}
-    .graph-shell {{
-      height: 620px;
-      background: linear-gradient(180deg, #fbfbf8 0%, #f0f3ef 100%);
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); min-width: 160px; }
+    button:disabled { opacity: .55; cursor: wait; }
+    select, input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fff; font: inherit; }
+    details { margin-top: 12px; color: var(--muted); }
+    details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+    .chip, .badge {
       border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 10px;
+      background: #fff;
+      color: #344054;
+      font-size: 13px;
+    }
+    .phase-ribbon { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 18px 0; }
+    .phase {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--muted);
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+      transition: background .25s ease, color .25s ease, border-color .25s ease;
+    }
+    .phase.active { background: #fff5f2; color: #9f3a32; border-color: #eda39d; }
+    .phase.done { background: #edf7ef; color: #27673b; border-color: #a7d9b4; }
+    .cockpit { display: grid; grid-template-columns: minmax(260px, .78fr) minmax(420px, 1.25fr) minmax(280px, .82fr); gap: 14px; }
+    .pane { min-height: 640px; padding: 14px; overflow: hidden; }
+    .pane-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .thinking {
+      height: 564px;
+      overflow: auto;
+      border: 1px solid #e6e9ee;
       border-radius: 8px;
-      overflow: hidden;
-      position: relative;
-    }}
-    svg {{ width: 100%; height: 100%; display: block; }}
-    .node {{ opacity: 0; transform-origin: center; transition: opacity .22s ease, transform .22s ease; }}
-    .node.visible {{ opacity: 1; }}
-    .node.running .ring {{ animation: pulse 680ms ease-in-out infinite alternate; }}
-    @keyframes pulse {{ from {{ stroke-width: 2; opacity: .35; }} to {{ stroke-width: 7; opacity: .85; }} }}
-    .edge {{ stroke: rgba(74, 85, 104, .28); stroke-width: 2; fill: none; }}
-    .edge.hot {{ stroke: var(--accent); stroke-width: 3; stroke-dasharray: 10 8; animation: dash 880ms linear infinite; }}
-    @keyframes dash {{ to {{ stroke-dashoffset: -36; }} }}
-    .log {{ height: 620px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }}
-    .event {{ border: 1px solid #e5e7eb; border-radius: 7px; padding: 10px; background: #fbfbfb; }}
-    .event strong {{ display: block; font-size: 13px; }}
-    .event span {{ color: var(--muted); font-size: 12px; }}
-    .answer {{ margin-top: 18px; display: none; }}
-    .answer.visible {{ display: block; }}
-    .headline {{ font-size: 24px; line-height: 1.25; font-weight: 780; margin: 6px 0 8px; }}
-    .metrics {{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }}
-    .metric {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfbf9; }}
-    .metric .label {{ color: var(--muted); font-size: 12px; }}
-    .metric .value {{ font-size: 23px; font-weight: 780; margin-top: 3px; }}
-    .tables {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-    th, td {{ border-bottom: 1px solid #eaecf0; padding: 8px; text-align: left; vertical-align: top; }}
-    th {{ color: var(--muted); font-size: 12px; }}
-    .error {{ color: #b42318; font-weight: 760; }}
-    @media (max-width: 850px) {{
-      .layout, .tables {{ grid-template-columns: 1fr; }}
-      .metrics {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .chips {{ margin-left: 0; }}
-      details .grid {{ grid-template-columns: 1fr; }}
-    }}
+      background: #101820;
+      color: #d9f3ee;
+      padding: 12px;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    .tool-chip {
+      display: inline-block;
+      margin: 3px 5px 3px 0;
+      padding: 4px 7px;
+      border-radius: 6px;
+      background: #22324a;
+      color: #cde3ff;
+      font: 12px ui-sans-serif, system-ui, sans-serif;
+    }
+    .cursor { display: inline-block; width: 7px; height: 14px; background: #d9f3ee; animation: blink 1s steps(2) infinite; vertical-align: -2px; }
+    @keyframes blink { 50% { opacity: 0; } }
+    .graph-wrap { position: relative; height: 590px; border: 1px solid #e1e5ea; border-radius: 8px; overflow: hidden; background: #fbfbf8; }
+    #beliefGraph { width: 100%; height: 100%; display: block; }
+    .link { stroke: #98a2b3; stroke-opacity: .62; stroke-width: 1.8px; }
+    .link.contradicts { stroke: var(--red); stroke-dasharray: 6 4; }
+    .link.proxy_only { stroke: var(--amber); stroke-dasharray: 4 4; }
+    .link.tests, .link.becomes_eval { stroke: var(--violet); }
+    .node circle { stroke: #fff; stroke-width: 2.4px; filter: drop-shadow(0 3px 7px rgba(17, 24, 39, .18)); }
+    .node text { font-size: 11px; font-weight: 750; pointer-events: none; fill: #253041; }
+    .node.pulse circle { animation: nodePulse .7s ease-out; }
+    @keyframes nodePulse { 0% { stroke-width: 8px; } 100% { stroke-width: 2.4px; } }
+    .toast {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: none;
+      border: 1px solid #f1b8b1;
+      background: #fff6f4;
+      color: #9f3a32;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 760;
+    }
+    .toast.visible { display: block; }
+    .workers { height: 332px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+    .worker {
+      border: 1px solid #dfe4eb;
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 70px;
+      background: #fbfcfd;
+      font-size: 12px;
+    }
+    .worker.running { border-color: #96d4cc; background: #edf8f6; }
+    .worker.done { border-color: #a8d8b5; background: #eef8f0; }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #b3d9d5; border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; margin-right: 5px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .counters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .counter { border: 1px solid #e1e5ea; border-radius: 8px; padding: 12px; background: #fbfbf9; }
+    .counter .label { font-size: 12px; color: var(--muted); }
+    .counter .value { font-size: 26px; font-weight: 820; margin-top: 2px; }
+    .event-log { height: 164px; overflow: auto; display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+    .event { border: 1px solid #e5e7eb; border-radius: 7px; padding: 8px; background: #fbfbfb; font-size: 12px; }
+    .event strong { display: block; font-size: 12px; }
+    .event span { color: var(--muted); }
+    .answer { margin-top: 18px; padding: 16px; display: none; }
+    .answer.visible { display: block; }
+    .headline { font-size: 24px; line-height: 1.25; font-weight: 780; margin: 6px 0 8px; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfbf9; }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { font-size: 22px; font-weight: 780; margin-top: 3px; }
+    .tables { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #eaecf0; padding: 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; }
+    @media (max-width: 1050px) {
+      .cockpit, .tables { grid-template-columns: 1fr; }
+      .pane { min-height: auto; }
+      .graph-wrap, .thinking { height: 520px; }
+      details .grid, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chips { margin-left: 0; }
+    }
+    @media (max-width: 650px) {
+      details .grid, .metrics, .phase-ribbon { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <main>
     <div class="brand">Pragmatic</div>
     <h1>Ask a technical question.</h1>
-    <p class="sub">Watch the real research job run: OpenAI Agents SDK orchestration, Modal fan-out, evidence extraction, invalid-leap detection, belief update, and Workshop artifacts.</p>
-
+    <p class="sub">Watch the live research job think, fan out, build evidence, revise confidence, and leave a trace you can inspect.</p>
     <section class="ask">
       <label for="question">Question</label>
-      <textarea id="question">{html.escape(DEFAULT_THESIS)}</textarea>
+      <textarea id="question">__DEFAULT_THESIS__</textarea>
       <div class="actions">
         <button class="primary" id="ask">Ask Pragmatic</button>
         <button id="stop" disabled>Stop Watching</button>
+        <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
         <div class="chips">
-          <span class="chip">live_sdk</span>
-          <span class="chip">modal</span>
-          <span class="chip">live web</span>
-          <span class="chip">Raindrop Workshop local</span>
+          <span class="chip">OpenAI Agents SDK</span>
+          <span class="chip">Modal fan-out</span>
+          <span class="chip">Raindrop Workshop</span>
         </div>
       </div>
       <details>
@@ -557,7 +733,7 @@ INDEX_HTML = f"""<!doctype html>
           <label>Orchestration<select id="orchestration"><option value="live_sdk">live_sdk</option><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option></select></label>
           <label>Execution<select id="execution_backend"><option value="modal">modal</option><option value="local">local</option></select></label>
           <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
-          <label>Model<input id="model" value="{DEFAULT_MODEL}" /></label>
+          <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
           <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
           <label>Max turns<input id="max_turns" type="number" value="12" min="1" max="20" /></label>
           <label>Max web sources<input id="max_web_sources" type="number" value="8" min="1" max="20" /></label>
@@ -565,18 +741,33 @@ INDEX_HTML = f"""<!doctype html>
         </div>
       </details>
     </section>
-
-    <section class="layout">
-      <div>
-        <h2>Thinking Graph</h2>
-        <div class="graph-shell"><svg id="graph" viewBox="0 0 900 620"></svg></div>
-      </div>
-      <aside>
-        <h2>Live Trace</h2>
-        <div class="panel log" id="log"></div>
+    <section class="phase-ribbon" id="phases">
+      <div class="phase" data-phase="decompose">Decompose</div>
+      <div class="phase" data-phase="retrieve">Retrieve</div>
+      <div class="phase" data-phase="extract">Extract</div>
+      <div class="phase" data-phase="check">Cross-check</div>
+      <div class="phase" data-phase="update">Update</div>
+      <div class="phase" data-phase="test">Test</div>
+    </section>
+    <section class="cockpit">
+      <aside class="panel pane">
+        <div class="pane-head"><h2>Thinking</h2><span class="badge" id="reasoningStatus">waiting</span></div>
+        <div class="thinking" id="thinking"><span class="cursor"></span></div>
+      </aside>
+      <section class="panel pane">
+        <div class="pane-head"><h2>Belief Graph</h2><span class="badge" id="graphStatus">0 nodes</span></div>
+        <div class="graph-wrap">
+          <svg id="beliefGraph"></svg>
+          <div class="toast" id="toast"></div>
+        </div>
+      </section>
+      <aside class="panel pane">
+        <div class="pane-head"><h2>Fan-out</h2><span class="badge" id="workerStatus">idle</span></div>
+        <div class="workers" id="workers"></div>
+        <div class="counters" id="counters"></div>
+        <div class="event-log" id="log"></div>
       </aside>
     </section>
-
     <section class="answer panel" id="answer">
       <div class="brand">Best Current Answer</div>
       <div class="headline" id="headline"></div>
@@ -589,151 +780,263 @@ INDEX_HTML = f"""<!doctype html>
       <div id="artifact"></div>
     </section>
   </main>
-
   <script>
-    const graph = document.getElementById("graph");
-    const log = document.getElementById("log");
     const ask = document.getElementById("ask");
     const stop = document.getElementById("stop");
+    const thinking = document.getElementById("thinking");
+    const log = document.getElementById("log");
+    const workers = document.getElementById("workers");
+    const toast = document.getElementById("toast");
     let source = null;
-    let lastNode = null;
-    const nodes = new Map();
-    const positions = {{
-      input: [80, 300],
-      live_harness: [210, 170],
-      live_sdk: [360, 170],
-      "tool.decompose_thesis_tool": [500, 90],
-      "tool.plan_questions_tool": [620, 90],
-      "tool.retrieve_sources_tool": [760, 150],
-      "tool.score_retrieval_tool": [760, 260],
-      "tool.execute_source_research_tasks_tool": [620, 360],
-      "tool.extract_evidence_tool": [500, 460],
-      "tool.cross_check_evidence_tool": [360, 460],
-      "tool.detect_invalid_leaps_tool": [220, 450],
-      "tool.update_beliefs_tool": [220, 320],
-      "tool.propose_decisive_tests_tool": [360, 320],
-      "tool.run_decisive_test_verifiers_tool": [500, 300],
-      "tool.generate_evals_from_failures_tool": [620, 470],
-      "tool.build_eval_workshop_tool": [760, 460],
-      "tool.record_observability_tool": [760, 350],
-      fallback: [210, 520],
-      answer: [820, 300],
-      error: [820, 520],
-      deterministic: [360, 520],
-      scripted_sdk: [360, 520],
-      replay: [360, 520]
-    }};
-    const labels = {{
-      input: "Question",
-      live_harness: "Harness",
-      live_sdk: "Agents SDK",
-      "tool.decompose_thesis_tool": "Assumptions",
-      "tool.plan_questions_tool": "Questions",
-      "tool.retrieve_sources_tool": "Sources",
-      "tool.score_retrieval_tool": "Retrieval",
-      "tool.execute_source_research_tasks_tool": "Modal Fan-out",
-      "tool.extract_evidence_tool": "Evidence",
-      "tool.cross_check_evidence_tool": "Cross-check",
-      "tool.detect_invalid_leaps_tool": "Invalid leaps",
-      "tool.update_beliefs_tool": "Belief graph",
-      "tool.propose_decisive_tests_tool": "Decisive tests",
-      "tool.run_decisive_test_verifiers_tool": "Verifiers",
-      "tool.generate_evals_from_failures_tool": "Failure evals",
-      "tool.build_eval_workshop_tool": "Workshop",
-      "tool.record_observability_tool": "Trace",
-      fallback: "Fallback graph",
-      answer: "Answer",
-      error: "Error",
-      deterministic: "Loop",
-      scripted_sdk: "Scripted SDK",
-      replay: "Replay"
-    }};
-    const colors = {{
-      input: "#5a6673",
-      live_harness: "#496ddb",
-      live_sdk: "#496ddb",
-      source: "#60744d",
-      worker: "#168a7a",
-      evidence: "#b06b20",
-      failure: "#c2415b",
-      eval: "#7b55c7",
-      belief: "#2f7d47",
-      answer: "#2f7d47",
-      error: "#c2415b"
-    }};
-    const stageKinds = {{
-      "tool.retrieve_sources_tool": "source",
-      "tool.execute_source_research_tasks_tool": "worker",
-      "tool.extract_evidence_tool": "evidence",
-      "tool.cross_check_evidence_tool": "evidence",
-      "tool.detect_invalid_leaps_tool": "failure",
-      "tool.update_beliefs_tool": "belief",
-      "tool.generate_evals_from_failures_tool": "eval",
-      "tool.build_eval_workshop_tool": "eval",
-      "tool.record_observability_tool": "eval"
-    }};
+    let pendingText = "";
+    let textTimer = null;
+    let graphNodes = [];
+    let graphLinks = [];
+    let nodeById = new Map();
+    let workerById = new Map();
+    let latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
+    const svg = document.getElementById("beliefGraph");
+    const linkLayer = svgEl("g", {});
+    const nodeLayer = svgEl("g", {});
+    svg.appendChild(linkLayer);
+    svg.appendChild(nodeLayer);
+    const simulation = {alpha: () => simulation, restart: () => { layoutGraph(); return simulation; }};
+    new ResizeObserver(resizeGraph).observe(document.querySelector(".graph-wrap"));
+    resizeGraph();
+    reset();
 
-    function reset() {{
-      graph.innerHTML = "";
+    function resizeGraph() {
+      const box = document.querySelector(".graph-wrap").getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${box.width || 720} ${box.height || 590}`);
+      layoutGraph();
+    }
+    function reset() {
+      pendingText = "";
+      thinking.innerHTML = '<span class="cursor"></span>';
       log.innerHTML = "";
-      nodes.clear();
-      lastNode = null;
+      workers.innerHTML = "";
+      workerById.clear();
+      graphNodes = [];
+      graphLinks = [];
+      nodeById = new Map();
+      latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
+      updateGraph();
+      renderCounters();
+      document.querySelectorAll(".phase").forEach(el => el.className = "phase");
       document.getElementById("answer").classList.remove("visible");
-    }}
-    function ensureNode(stage, event) {{
-      const id = positions[stage] ? stage : "scripted_sdk";
-      if (nodes.has(id)) return nodes.get(id);
-      const [x, y] = positions[id];
-      const kind = stageKinds[id] || id;
-      const color = colors[kind] || colors[id] || "#496ddb";
-      const group = svgEl("g", {{ class: "node visible", "data-id": id }});
-      group.appendChild(svgEl("circle", {{ cx: x, cy: y, r: 30, fill: "#fff", stroke: "#d0d5dd" }}));
-      group.appendChild(svgEl("circle", {{ cx: x, cy: y, r: 18, fill: color, opacity: ".16" }}));
-      group.appendChild(svgEl("circle", {{ cx: x, cy: y, r: 9, fill: color }}));
-      group.appendChild(svgEl("circle", {{ cx: x, cy: y, r: 23, fill: "none", stroke: color, class: "ring" }}));
-      group.appendChild(textEl(x, y + 46, labels[id] || stage.replace("tool.", ""), "middle", "13px", "700"));
-      graph.appendChild(group);
-      const node = {{ id, x, y, el: group }};
-      nodes.set(id, node);
-      return node;
-    }}
-    function svgEl(name, attrs) {{
-      const el = document.createElementNS("http://www.w3.org/2000/svg", name);
-      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
-      return el;
-    }}
-    function textEl(x, y, value, anchor, size, weight) {{
-      const t = svgEl("text", {{ x, y, "text-anchor": anchor, "font-size": size, "font-weight": weight || "500", fill: "#17212b" }});
-      t.textContent = value;
-      return t;
-    }}
-    function drawEdge(from, to, hot) {{
-      const path = svgEl("path", {{
-        d: `M ${{from.x}} ${{from.y}} Q ${{(from.x + to.x) / 2}} ${{(from.y + to.y) / 2 - 42}} ${{to.x}} ${{to.y}}`,
-        class: hot ? "edge hot" : "edge"
-      }});
-      graph.insertBefore(path, graph.firstChild);
-      setTimeout(() => path.classList.remove("hot"), 1600);
-    }}
-    function setRunning(node, status) {{
-      nodes.forEach((n) => n.el.classList.remove("running"));
-      if (status === "running") node.el.classList.add("running");
-    }}
-    function onProgress(event) {{
+      document.getElementById("graphStatus").textContent = "0 nodes";
+      document.getElementById("workerStatus").textContent = "idle";
+      document.getElementById("reasoningStatus").textContent = "waiting";
+    }
+    function onProgress(event) {
       addLog(event);
-      const node = ensureNode(event.stage, event);
-      if (lastNode && lastNode.id !== node.id) drawEdge(lastNode, node, true);
-      lastNode = node;
-      setRunning(node, event.status);
-    }}
-    function addLog(event) {{
+      markPhase(event.stage);
+      const kind = event.kind || event.metadata?.kind || "";
+      if (kind === "reasoning.delta") appendReasoning(event.metadata?.text || "");
+      else if (kind === "tool.call") addToolChip(event.metadata?.name || event.stage);
+      else if (kind === "tool.output") addToolChip(`${event.metadata?.name || "tool"} done`);
+      else if (kind === "fanout.spawn") spawnWorkers(Number(event.metadata?.tasks || 0), event.metadata?.backend || "local");
+      else if (kind === "fanout.task") settleWorker(event.metadata?.task_id, event.metadata?.task_status || event.status);
+      else if (kind === "node.add") addGraphNode(event.metadata);
+      else if (kind === "edge.add") addGraphEdge(event.metadata);
+      else if (kind === "node.confidence") updateConfidence(event.metadata);
+      else if (kind === "counter") updateCounters(event.metadata || {});
+      if (!kind && event.stage?.startsWith("tool.")) addToolChip(event.stage.replace("tool.", ""));
+    }
+    function appendReasoning(text) {
+      if (!text) return;
+      pendingText += text;
+      document.getElementById("reasoningStatus").textContent = "streaming";
+      if (!textTimer) textTimer = setInterval(releaseThinkingText, 70);
+    }
+    function releaseThinkingText() {
+      if (!pendingText) {
+        clearInterval(textTimer);
+        textTimer = null;
+        return;
+      }
+      const chunk = pendingText.slice(0, 4);
+      pendingText = pendingText.slice(4);
+      thinking.insertBefore(document.createTextNode(chunk), thinking.querySelector(".cursor"));
+      thinking.scrollTop = thinking.scrollHeight;
+    }
+    function addToolChip(name) {
+      const chip = document.createElement("span");
+      chip.className = "tool-chip";
+      chip.textContent = name;
+      thinking.insertBefore(chip, thinking.querySelector(".cursor"));
+      thinking.insertBefore(document.createTextNode(" "), thinking.querySelector(".cursor"));
+      thinking.scrollTop = thinking.scrollHeight;
+      document.getElementById("reasoningStatus").textContent = "tools active";
+    }
+    function addGraphNode(meta) {
+      if (!meta?.id || nodeById.has(meta.id)) return;
+      const node = {id: meta.id, kind: meta.node_kind || "unknown", label: meta.label || meta.id, confidence: Number(meta.confidence ?? .5)};
+      nodeById.set(node.id, node);
+      graphNodes.push(node);
+      updateGraph();
+      document.getElementById("graphStatus").textContent = `${graphNodes.length} nodes`;
+    }
+    function addGraphEdge(meta) {
+      if (!meta?.from || !meta?.to) return;
+      if (!nodeById.has(meta.from)) addGraphNode({id: meta.from, node_kind: "unknown", label: meta.from});
+      if (!nodeById.has(meta.to)) addGraphNode({id: meta.to, node_kind: "unknown", label: meta.to});
+      const id = `${meta.from}->${meta.to}:${meta.relation || "relates"}`;
+      if (graphLinks.some(link => link.id === id)) return;
+      graphLinks.push({id, source: meta.from, target: meta.to, relation: meta.relation || "relates"});
+      updateGraph();
+    }
+    function updateConfidence(meta) {
+      const id = meta?.id;
+      if (!id) return;
+      if (!nodeById.has(id)) addGraphNode({id, node_kind: "assumption", label: id, confidence: meta.from || 0});
+      const node = nodeById.get(id);
+      node.confidence = Number(meta.to ?? node.confidence);
+      updateGraph();
+      const group = nodeLayer.querySelector(`[data-id="${cssEscape(id)}"]`);
+      if (group) group.classList.add("pulse");
+      setTimeout(() => nodeLayer.querySelectorAll("g.node").forEach(el => el.classList.remove("pulse")), 800);
+      if (Number(meta.to) < Number(meta.from)) showToast(`Reclassified: ${meta.reason || "confidence dropped after replay"}`);
+    }
+    function updateGraph() {
+      layoutGraph();
+    }
+    function layoutGraph() {
+      const box = document.querySelector(".graph-wrap").getBoundingClientRect();
+      const width = box.width || 720;
+      const height = box.height || 590;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const rings = {assumption: 165, evidence: 95, source: 235, test: 210, eval: 260, unknown: 40};
+      const groups = {};
+      graphNodes.forEach(node => {
+        groups[node.kind] = groups[node.kind] || [];
+        groups[node.kind].push(node);
+      });
+      Object.entries(groups).forEach(([kind, nodes]) => {
+        const radius = rings[kind] || 120;
+        nodes.forEach((node, index) => {
+          const angle = (Math.PI * 2 * index / Math.max(nodes.length, 1)) + kindOffset(kind);
+          node.x = centerX + Math.cos(angle) * radius;
+          node.y = centerY + Math.sin(angle) * radius * .72;
+        });
+      });
+      renderLinks();
+      renderNodes();
+    }
+    function kindOffset(kind) {
+      return {assumption: -.2, evidence: .5, source: 1.1, test: 2.1, eval: 2.8, unknown: 0}[kind] || 0;
+    }
+    function renderLinks() {
+      linkLayer.innerHTML = "";
+      graphLinks.forEach(link => {
+        const sourceNode = typeof link.source === "string" ? nodeById.get(link.source) : link.source;
+        const targetNode = typeof link.target === "string" ? nodeById.get(link.target) : link.target;
+        if (!sourceNode || !targetNode) return;
+        const line = svgEl("line", {
+          class: `link ${link.relation || ""}`,
+          x1: sourceNode.x,
+          y1: sourceNode.y,
+          x2: targetNode.x,
+          y2: targetNode.y,
+        });
+        linkLayer.appendChild(line);
+      });
+    }
+    function renderNodes() {
+      const pulsing = new Set([...nodeLayer.querySelectorAll(".pulse")].map(el => el.dataset.id));
+      nodeLayer.innerHTML = "";
+      graphNodes.forEach(node => {
+        const group = svgEl("g", {class: `node ${pulsing.has(node.id) ? "pulse" : ""}`, "data-id": node.id, transform: `translate(${node.x},${node.y})`});
+        group.appendChild(svgEl("circle", {r: radiusFor(node), fill: colorFor(node)}));
+        const text = svgEl("text", {y: radiusFor(node) + 13, "text-anchor": "middle"});
+        text.textContent = shortLabel(node.label);
+        group.appendChild(text);
+        nodeLayer.appendChild(group);
+      });
+    }
+    function radiusFor(d) {
+      return {assumption: 18, evidence: 13, source: 12, test: 14, eval: 14, unknown: 10}[d.kind] || 11;
+    }
+    function colorFor(d) {
+      if (d.kind === "source") return "#60744d";
+      if (d.kind === "evidence") return "#b06b20";
+      if (d.kind === "test") return "#6d56bf";
+      if (d.kind === "eval") return "#7b55c7";
+      if (d.confidence >= .66) return "#2f7d47";
+      if (d.confidence >= .34) return "#b97716";
+      return "#c2415b";
+    }
+    function shortLabel(value) {
+      const text = String(value || "");
+      return text.length > 28 ? `${text.slice(0, 25)}...` : text;
+    }
+    function svgEl(name, attrs) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+      return el;
+    }
+    function spawnWorkers(count, backend) {
+      document.getElementById("workerStatus").textContent = `${count} ${backend} tasks`;
+      for (let i = 0; i < count; i++) {
+        const id = `worker-${Date.now()}-${i}`;
+        const div = document.createElement("div");
+        div.className = "worker running";
+        div.dataset.id = id;
+        div.innerHTML = `<strong><span class="spinner"></span>${backend} worker</strong><div>task ${i + 1}</div>`;
+        workers.appendChild(div);
+        workerById.set(id, div);
+      }
+    }
+    function settleWorker(taskId, status) {
+      let div = taskId ? workers.querySelector(`[data-task="${cssEscape(taskId)}"]`) : null;
+      if (!div) div = workers.querySelector(".worker.running");
+      if (!div) return;
+      if (taskId) div.dataset.task = taskId;
+      div.className = status === "failed" ? "worker" : "worker done";
+      div.innerHTML = `<strong>${status === "failed" ? "failed" : "done"}</strong><div>${escapeHtml(taskId || "task")}</div>`;
+    }
+    function updateCounters(meta) {
+      latestCounters = {...latestCounters, ...meta};
+      renderCounters();
+    }
+    function renderCounters() {
+      document.getElementById("counters").innerHTML = [
+        ["Sources", latestCounters.sources],
+        ["Evidence", latestCounters.evidence],
+        ["Leaps", latestCounters.leaps],
+        ["Conflicts", latestCounters.conflicts],
+        ["Tests", latestCounters.tests],
+        ["Nodes", graphNodes.length],
+      ].map(([label, value]) => `<div class="counter"><div class="label">${label}</div><div class="value">${value || 0}</div></div>`).join("");
+    }
+    function markPhase(stage) {
+      const map = [
+        ["decompose", ["decompose"]],
+        ["retrieve", ["retrieve", "score"]],
+        ["extract", ["execute_source", "extract", "fanout"]],
+        ["check", ["cross_check", "invalid"]],
+        ["update", ["belief", "confidence"]],
+        ["test", ["decisive", "verifier", "eval", "workshop", "observability", "answer"]],
+      ];
+      const key = map.find(([, needles]) => needles.some(n => String(stage).includes(n)))?.[0];
+      if (!key) return;
+      const phases = [...document.querySelectorAll(".phase")];
+      const index = phases.findIndex(el => el.dataset.phase === key);
+      phases.forEach((el, i) => {
+        if (i < index) el.className = "phase done";
+        if (i === index) el.className = "phase active";
+      });
+    }
+    function addLog(event) {
       const div = document.createElement("div");
       div.className = "event";
-      div.innerHTML = `<strong>${{escapeHtml(event.message || event.stage)}}</strong><span>${{event.index || ""}} | ${{escapeHtml(event.stage)}} | ${{escapeHtml(event.status)}}</span>`;
+      div.innerHTML = `<strong>${escapeHtml(event.message || event.stage)}</strong><span>${event.index || ""} | ${escapeHtml(event.kind || event.stage)} | ${escapeHtml(event.status)}</span>`;
       log.prepend(div);
-    }}
-    function renderAnswer(result) {{
+    }
+    function renderAnswer(result) {
       const summary = result.summary;
+      document.querySelectorAll(".phase").forEach(el => el.className = "phase done");
       document.getElementById("headline").textContent = summary.headline;
       document.getElementById("answerText").textContent =
         summary.verdict === "Not proven yet"
@@ -745,31 +1048,41 @@ INDEX_HTML = f"""<!doctype html>
         ["Sources", summary.counts.sources],
         ["Evidence", summary.counts.evidence],
         ["Modal tasks", summary.counts.modal_tasks]
-      ].map(([label, value]) => `<div class="metric"><div class="label">${{label}}</div><div class="value">${{value}}</div></div>`).join("");
+      ].map(([label, value]) => `<div class="metric"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(String(value))}</div></div>`).join("");
       document.getElementById("evidence").innerHTML = tableHtml(["Type", "Source", "Claim"], summary.evidence.map(row => [row.type, row.source, row.claim]));
       document.getElementById("gaps").innerHTML = tableHtml(["Kind", "Issue", "Next"], summary.gaps.map(row => [row.kind, row.summary, row.next]));
       document.getElementById("artifact").innerHTML = [
-        summary.trace_id ? `<p><strong>Trace:</strong> ${{escapeHtml(summary.trace_id)}}</p>` : "",
-        summary.trace_path ? `<p><strong>Local trace:</strong> ${{escapeHtml(summary.trace_path)}}</p>` : "",
-        summary.workshop_path ? `<p><strong>Workshop:</strong> ${{escapeHtml(summary.workshop_path)}}</p>` : ""
+        summary.trace_id ? `<p><strong>Trace:</strong> ${escapeHtml(summary.trace_id)}</p>` : "",
+        summary.trace_path ? `<p><strong>Local trace:</strong> ${escapeHtml(summary.trace_path)}</p>` : "",
+        summary.workshop_path ? `<p><strong>Workshop:</strong> ${escapeHtml(summary.workshop_path)}</p>` : ""
       ].join("");
       document.getElementById("answer").classList.add("visible");
-      onProgress({{ stage: "answer", status: "succeeded", message: "Answer rendered.", metadata: {{}} }});
-    }}
-    function tableHtml(headers, rows) {{
+      document.getElementById("answer").scrollIntoView({behavior: "smooth", block: "nearest"});
+    }
+    function tableHtml(headers, rows) {
       if (!rows.length) return "<tbody><tr><td>No rows yet.</td></tr></tbody>";
-      return `<thead><tr>${{headers.map(h => `<th>${{escapeHtml(h)}}</th>`).join("")}}</tr></thead><tbody>${{rows.map(row => `<tr>${{row.map(cell => `<td>${{escapeHtml(String(cell || ""))}}</td>`).join("")}}</tr>`).join("")}}</tbody>`;
-    }}
-    function escapeHtml(value) {{
-      return value.replace(/[&<>"']/g, c => ({{ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }}[c]));
-    }}
-    async function startRun() {{
+      return `<thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell || ""))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    }
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("visible");
+      setTimeout(() => toast.classList.remove("visible"), 4200);
+    }
+    function cssEscape(value) {
+      return String(value || "").replace(/["\\\\]/g, "\\\\$&");
+    }
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    async function startRun() {
       reset();
       ask.disabled = true;
       stop.disabled = false;
-      const payload = {{
+      document.getElementById("modeBadge").textContent =
+        `${document.getElementById("orchestration").value} / ${document.getElementById("execution_backend").value} / ${document.getElementById("source_mode").value}`;
+      const payload = {
         thesis_text: document.getElementById("question").value,
-        config: {{
+        config: {
           orchestration: document.getElementById("orchestration").value,
           execution_backend: document.getElementById("execution_backend").value,
           source_mode: document.getElementById("source_mode").value,
@@ -783,33 +1096,33 @@ INDEX_HTML = f"""<!doctype html>
           live_dry_run: false,
           allow_live_web_search: document.getElementById("source_mode").value === "web",
           observability_mode: "local"
-        }}
-      }};
-      const response = await fetch("/api/runs", {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, body: JSON.stringify(payload) }});
+        }
+      };
+      const response = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
       const data = await response.json();
-      source = new EventSource(`/api/runs/${{data.job_id}}/events`);
-      source.addEventListener("progress", (message) => onProgress(JSON.parse(message.data)));
-      source.addEventListener("done", (message) => {{
+      source = new EventSource(`/api/runs/${data.job_id}/events`);
+      source.addEventListener("progress", message => onProgress(JSON.parse(message.data)));
+      source.addEventListener("done", message => {
         const done = JSON.parse(message.data);
         ask.disabled = false;
         stop.disabled = true;
         source.close();
+        document.getElementById("reasoningStatus").textContent = "complete";
         if (done.status === "succeeded") renderAnswer(done.result);
-        else onProgress({{ stage: "error", status: "failed", message: done.error || "Run failed", metadata: {{}} }});
-      }});
-    }}
+        else onProgress({stage: "error", status: "failed", message: done.error || "Run failed", metadata: {}});
+      });
+    }
     ask.addEventListener("click", startRun);
-    stop.addEventListener("click", () => {{
+    stop.addEventListener("click", () => {
       if (source) source.close();
       ask.disabled = false;
       stop.disabled = true;
-      onProgress({{ stage: "input", status: "stopped", message: "Stopped watching. The server job may still finish.", metadata: {{}} }});
-    }});
-    reset();
+      onProgress({stage: "input", status: "stopped", message: "Stopped watching. The server job may still finish.", metadata: {}});
+    });
   </script>
 </body>
 </html>
-"""
+""".replace("__DEFAULT_THESIS__", html.escape(DEFAULT_THESIS)).replace("__DEFAULT_MODEL__", DEFAULT_MODEL)
 
 
 app = Starlette(

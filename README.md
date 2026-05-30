@@ -202,3 +202,16 @@ Run tests:
 ```bash
 PYTHONPATH=src pytest
 ```
+
+## Milestone 33
+
+The realtime app is now a research cockpit instead of a fixed pipeline diagram. The SSE envelope remains backward-compatible, but events may include a top-level `kind` plus structured metadata for richer animation:
+
+- `reasoning.delta`: streamed model text for the Thinking pane.
+- `tool.call` / `tool.output`: inline tool chips in the transcript.
+- `fanout.spawn` / `fanout.task`: Modal/local worker cards that spawn and resolve.
+- `node.add` / `edge.add`: belief graph growth.
+- `node.confidence`: confidence recoloring and self-correction pulses.
+- `counter`: cumulative sources, evidence, leaps, conflicts, and tests.
+
+The cockpit has three zones: Thinking transcript, Belief Graph, and Fan-out/Counters. Live SDK runs use `Runner.run_streamed`; deterministic, scripted, replay, and recovered-timeout paths also emit graph snapshots so the demo remains inspectable when live services are slow.

@@ -86,9 +86,30 @@ class AgentOutputValidationError(RuntimeError):
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+PartialStateCallback = Callable[[ResearchState], None]
 _PROGRESS_CALLBACK: ContextVar[ProgressCallback | None] = ContextVar(
     "pragmatic_progress_callback",
     default=None,
+)
+_PARTIAL_STATE_HOLDER: ContextVar[dict[str, Any] | None] = ContextVar(
+    "pragmatic_partial_state_holder",
+    default=None,
+)
+
+_PARTIAL_LIST_FIELDS = (
+    "assumptions",
+    "research_questions",
+    "sources",
+    "retrieval_scores",
+    "evidence_items",
+    "evidence_conflicts",
+    "invalid_leaps",
+    "belief_updates",
+    "decisive_tests",
+    "verifier_results",
+    "generated_evals",
+    "research_task_results",
+    "trace_events",
 )
 
 
@@ -101,11 +122,13 @@ def _emit_progress(
     callback = _PROGRESS_CALLBACK.get()
     if callback is None:
         return
+    kind = metadata.pop("kind", None)
     callback(
         {
             "stage": stage,
             "status": status,
             "message": message,
+            "kind": kind,
             "metadata": metadata,
         }
     )
@@ -118,6 +141,212 @@ def _emit_tool_progress(
     **metadata: Any,
 ) -> None:
     _emit_progress(f"tool.{tool_name}", status, message, tool_name=tool_name, **metadata)
+
+
+def _emit_cockpit_event(
+    kind: str,
+    *,
+    stage: str,
+    status: str = "running",
+    message: str,
+    **metadata: Any,
+) -> None:
+    _emit_progress(stage, status, message, kind=kind, **metadata)
+
+
+def _emit_node_add(
+    node_id: str,
+    node_kind: str,
+    label: str,
+    *,
+    confidence: float | None = None,
+    stage: str = "graph",
+) -> None:
+    payload: dict[str, Any] = {
+        "id": node_id,
+        "node_kind": node_kind,
+        "label": label[:140],
+    }
+    if confidence is not None:
+        payload["confidence"] = confidence
+    _emit_cockpit_event(
+        "node.add",
+        stage=stage,
+        status="created",
+        message=f"Added {node_kind} node.",
+        **payload,
+    )
+
+
+def _emit_edge_add(
+    from_id: str,
+    to_id: str,
+    relation: str,
+    *,
+    stage: str = "graph",
+) -> None:
+    _emit_cockpit_event(
+        "edge.add",
+        stage=stage,
+        status="created",
+        message=f"Linked {from_id} to {to_id}.",
+        **{"from": from_id, "to": to_id, "relation": relation},
+    )
+
+
+def _emit_counter(
+    *,
+    sources: int = 0,
+    evidence: int = 0,
+    leaps: int = 0,
+    conflicts: int = 0,
+    tests: int = 0,
+    stage: str = "counter",
+) -> None:
+    _emit_cockpit_event(
+        "counter",
+        stage=stage,
+        status="updated",
+        message="Updated research counters.",
+        sources=sources,
+        evidence=evidence,
+        leaps=leaps,
+        conflicts=conflicts,
+        tests=tests,
+    )
+
+
+def _emit_confidence(
+    assumption_id: str,
+    previous: float,
+    current: float,
+    reason: str,
+    *,
+    stage: str = "tool.update_beliefs_tool",
+) -> None:
+    _emit_cockpit_event(
+        "node.confidence",
+        stage=stage,
+        status="updated",
+        message=f"Updated confidence for {assumption_id}.",
+        id=assumption_id,
+        **{"from": previous, "to": current},
+        reason=reason[:220],
+    )
+
+
+def _emit_state_graph_snapshot(state: ResearchState, *, stage: str = "graph") -> None:
+    for assumption in state.assumptions:
+        _emit_node_add(
+            assumption.id,
+            "assumption",
+            assumption.text,
+            confidence=assumption.confidence,
+            stage=stage,
+        )
+    for source in state.sources:
+        _emit_node_add(source.id, "source", source.title, stage=stage)
+    for item in state.evidence_items:
+        _emit_node_add(
+            item.id,
+            "evidence",
+            item.claim_supported,
+            confidence=item.confidence,
+            stage=stage,
+        )
+        _emit_edge_add(
+            item.source_id,
+            item.id,
+            "contradicts" if item.evidence_type == "contradictory" else "supports",
+            stage=stage,
+        )
+        for assumption_id in item.assumption_ids:
+            relation = "proxy_only" if item.evidence_type in {"proxy", "indirect"} else "supports"
+            if item.evidence_type == "contradictory":
+                relation = "contradicts"
+            _emit_edge_add(item.id, assumption_id, relation, stage=stage)
+    for test in state.decisive_tests:
+        _emit_node_add(test.id, "test", test.test, stage=stage)
+        for assumption_id in test.would_resolve:
+            _emit_edge_add(assumption_id, test.id, "tests", stage=stage)
+    _emit_counter(
+        sources=len(state.sources),
+        evidence=len(state.evidence_items),
+        leaps=len(state.invalid_leaps),
+        conflicts=len(state.evidence_conflicts),
+        tests=len(state.decisive_tests),
+        stage=stage,
+    )
+
+
+def _partial_state() -> ResearchState | None:
+    holder = _PARTIAL_STATE_HOLDER.get()
+    if holder is None:
+        return None
+    state = holder.get("state")
+    return state if isinstance(state, ResearchState) else None
+
+
+def _publish_partial_state() -> None:
+    holder = _PARTIAL_STATE_HOLDER.get()
+    if holder is None:
+        return
+    state = holder.get("state")
+    callback = holder.get("callback")
+    if isinstance(state, ResearchState) and callback is not None:
+        callback(state.model_copy(deep=True))
+
+
+def _merge_partial_state(candidate: ResearchState) -> None:
+    state = _partial_state()
+    if state is None:
+        return
+    if candidate.thesis.text and state.thesis.text != candidate.thesis.text:
+        state.thesis = candidate.thesis
+    state.iteration = max(state.iteration, candidate.iteration)
+    for field in _PARTIAL_LIST_FIELDS:
+        additions = getattr(candidate, field)
+        if additions:
+            _append_unique(getattr(state, field), additions)
+    if candidate.observability is not None:
+        state.observability = candidate.observability
+    if candidate.eval_workshop is not None:
+        state.eval_workshop = candidate.eval_workshop
+    if candidate.agent_run is not None:
+        state.agent_run = candidate.agent_run
+    _publish_partial_state()
+
+
+def _record_partial_list(field: str, values: list[Any]) -> None:
+    state = _partial_state()
+    if state is None or not values:
+        return
+    _append_unique(getattr(state, field), values)
+    _publish_partial_state()
+
+
+def _record_partial_batch(result: ResearchBatchResult) -> None:
+    state = _partial_state()
+    if state is None:
+        return
+    _append_unique(state.research_task_results, result.results)
+    _append_unique(
+        state.sources,
+        [source for task_result in result.results for source in task_result.sources],
+    )
+    _append_unique(
+        state.evidence_items,
+        [item for task_result in result.results for item in task_result.evidence_items],
+    )
+    _append_unique(
+        state.evidence_conflicts,
+        [conflict for task_result in result.results for conflict in task_result.evidence_conflicts],
+    )
+    _append_unique(
+        state.verifier_results,
+        [verifier for task_result in result.results for verifier in task_result.verifier_results],
+    )
+    _publish_partial_state()
 
 
 RESEARCH_MANAGER_INSTRUCTIONS = """
@@ -164,6 +393,27 @@ class ResearchManager:
             execution_backend=execution_backend,
             extraction_mode=extraction_mode,
             modal_fallback=modal_fallback,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+        )
+
+    def finalize_partial_state(
+        self,
+        state: ResearchState,
+        *,
+        execution_backend: ExecutionBackend,
+        source_mode: SourceAcquisitionMode = "prepared",
+        allow_live_web_search: bool = False,
+        web_search_model: str | None = None,
+        max_web_sources: int = 8,
+        observability_mode: ObservabilityMode = "off",
+    ) -> ResearchState:
+        return _finalize_live_research_state(
+            state,
+            execution_backend=execution_backend,
             source_mode=source_mode,
             allow_live_web_search=allow_live_web_search,
             web_search_model=web_search_model,
@@ -504,6 +754,7 @@ class ResearchManager:
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
         progress_callback: ProgressCallback | None = None,
+        partial_state_callback: PartialStateCallback | None = None,
     ) -> ResearchState:
         return _run_awaitable(
             self.run_live(
@@ -519,6 +770,7 @@ class ResearchManager:
                 observability_mode=observability_mode,
                 allow_live_sdk=allow_live_sdk,
                 progress_callback=progress_callback,
+                partial_state_callback=partial_state_callback,
             )
         )
 
@@ -537,6 +789,7 @@ class ResearchManager:
         observability_mode: ObservabilityMode = "off",
         allow_live_sdk: bool = False,
         progress_callback: ProgressCallback | None = None,
+        partial_state_callback: PartialStateCallback | None = None,
     ) -> ResearchState:
         _require_live_sdk_enabled(allow_live_sdk)
         _require_agents_sdk()
@@ -572,8 +825,14 @@ class ResearchManager:
             f"observability_mode: {observability_mode}\n\n"
             f"Thesis: {thesis_text}"
         )
+        partial_holder: dict[str, Any] = {
+            "state": ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery")),
+            "callback": partial_state_callback,
+        }
         token = _PROGRESS_CALLBACK.set(progress_callback)
+        partial_token = _PARTIAL_STATE_HOLDER.set(partial_holder)
         try:
+            _publish_partial_state()
             _emit_progress(
                 "live_sdk",
                 "running",
@@ -581,13 +840,18 @@ class ResearchManager:
                 model=self.model or "",
                 max_turns=self.max_turns,
             )
-            result = await Runner.run(agent, prompt, max_turns=self.max_turns)
+            result = Runner.run_streamed(agent, input=prompt, max_turns=self.max_turns)
+            delta_buffer: list[str] = []
+            async for event in result.stream_events():
+                _emit_stream_event(event, delta_buffer)
+            _flush_reasoning_delta(delta_buffer)
             _emit_progress(
                 "live_sdk",
                 "succeeded",
                 "OpenAI Agents SDK runner returned a final output.",
             )
         finally:
+            _PARTIAL_STATE_HOLDER.reset(partial_token)
             _PROGRESS_CALLBACK.reset(token)
         state = _coerce_research_state(result)
         state.agent_run = AgentRunRecord(
@@ -672,6 +936,16 @@ if function_tool is not None:
 
         _emit_tool_progress("decompose_thesis_tool", "running", "Decomposing the question into assumptions.")
         assumptions = decompose_thesis(thesis_text)
+        _record_partial_list("assumptions", assumptions)
+        for assumption in assumptions:
+            _emit_node_add(
+                assumption.id,
+                "assumption",
+                assumption.text,
+                confidence=assumption.confidence,
+                stage="tool.decompose_thesis_tool",
+            )
+        _emit_counter(stage="tool.decompose_thesis_tool")
         _emit_tool_progress(
             "decompose_thesis_tool",
             "succeeded",
@@ -686,7 +960,17 @@ if function_tool is not None:
 
         _emit_tool_progress("plan_questions_tool", "running", "Planning evidence questions.")
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         questions = generate_initial_questions(state)
+        _record_partial_list("research_questions", questions)
+        for question in questions:
+            for assumption_id in question.assumption_ids:
+                _emit_edge_add(
+                    assumption_id,
+                    question.id,
+                    "asks",
+                    stage="tool.plan_questions_tool",
+                )
         _emit_tool_progress(
             "plan_questions_tool",
             "succeeded",
@@ -730,6 +1014,10 @@ if function_tool is not None:
         else:
             corpus = load_corpus(corpus_path or None)
         sources = retrieve_sources(questions, corpus)
+        _record_partial_list("sources", sources)
+        for source in sources:
+            _emit_node_add(source.id, "source", source.title, stage="tool.retrieve_sources_tool")
+        _emit_counter(sources=len(sources), stage="tool.retrieve_sources_tool")
         _emit_tool_progress(
             "retrieve_sources_tool",
             "succeeded",
@@ -757,6 +1045,7 @@ if function_tool is not None:
         else:
             corpus = load_corpus(corpus_path or None)
             scores = score_retrieval(questions, corpus)
+        _record_partial_list("retrieval_scores", scores)
         _emit_tool_progress(
             "score_retrieval_tool",
             "succeeded",
@@ -776,6 +1065,7 @@ if function_tool is not None:
             for assumption in json.loads(assumptions_json)
         ]
         evidence = extract_evidence(sources, assumptions)
+        _record_partial_list("evidence_items", evidence)
         _emit_tool_progress(
             "extract_evidence_tool",
             "succeeded",
@@ -846,6 +1136,52 @@ if function_tool is not None:
                 "backend_sequence": f"{parse_result.backend}->{extraction_result.backend}",
             },
         )
+        _record_partial_batch(result)
+        _emit_cockpit_event(
+            "fanout.spawn",
+            stage="tool.execute_source_research_tasks_tool",
+            status="running",
+            message=f"Spawned {len(combined_results)} research workers.",
+            tasks=len(combined_results),
+            backend=result.attempted_backend,
+        )
+        for task_result in combined_results:
+            source_id = task_result.source_ids[0] if task_result.source_ids else ""
+            _emit_cockpit_event(
+                "fanout.task",
+                stage="tool.execute_source_research_tasks_tool",
+                status="succeeded" if task_result.status == "succeeded" else "failed",
+                message=f"{task_result.task_id} {task_result.status}.",
+                task_id=task_result.task_id,
+                source_id=source_id,
+                task_status=task_result.status,
+            )
+            for source in task_result.sources:
+                _emit_node_add(source.id, "source", source.title, stage="tool.execute_source_research_tasks_tool")
+            for item in task_result.evidence_items:
+                _emit_node_add(
+                    item.id,
+                    "evidence",
+                    item.claim_supported,
+                    confidence=item.confidence,
+                    stage="tool.execute_source_research_tasks_tool",
+                )
+                _emit_edge_add(
+                    item.source_id,
+                    item.id,
+                    "contradicts" if item.evidence_type == "contradictory" else "supports",
+                    stage="tool.execute_source_research_tasks_tool",
+                )
+                for assumption_id in item.assumption_ids:
+                    relation = "proxy_only" if item.evidence_type in {"proxy", "indirect"} else "supports"
+                    if item.evidence_type == "contradictory":
+                        relation = "contradicts"
+                    _emit_edge_add(item.id, assumption_id, relation, stage="tool.execute_source_research_tasks_tool")
+        _emit_counter(
+            sources=len(parsed_sources),
+            evidence=sum(len(task_result.evidence_items) for task_result in combined_results),
+            stage="tool.execute_source_research_tasks_tool",
+        )
         _emit_tool_progress(
             "execute_source_research_tasks_tool",
             "succeeded",
@@ -886,6 +1222,18 @@ if function_tool is not None:
             backend=_validate_execution_backend(execution_backend),
             fallback_to_local=fallback_to_local,
         )
+        _record_partial_batch(result)
+        conflicts = [
+            conflict
+            for task_result in result.results
+            for conflict in task_result.evidence_conflicts
+        ]
+        _emit_counter(
+            sources=len(sources),
+            evidence=len(evidence_items),
+            conflicts=len(conflicts),
+            stage="tool.cross_check_evidence_tool",
+        )
         _emit_tool_progress(
             "cross_check_evidence_tool",
             "succeeded",
@@ -900,7 +1248,17 @@ if function_tool is not None:
 
         _emit_tool_progress("detect_invalid_leaps_tool", "running", "Looking for invalid inference leaps.")
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         leaps = detect_invalid_leaps(state)
+        _record_partial_list("invalid_leaps", leaps)
+        _emit_counter(
+            sources=len(state.sources),
+            evidence=len(state.evidence_items),
+            leaps=len(leaps),
+            conflicts=len(state.evidence_conflicts),
+            tests=len(state.decisive_tests),
+            stage="tool.detect_invalid_leaps_tool",
+        )
         _emit_tool_progress(
             "detect_invalid_leaps_tool",
             "succeeded",
@@ -915,7 +1273,20 @@ if function_tool is not None:
 
         _emit_tool_progress("update_beliefs_tool", "running", "Updating the belief graph.")
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         updates = update_beliefs(state)
+        partial = _partial_state()
+        if partial is not None:
+            partial.belief_updates = updates
+            apply_belief_updates(partial, updates)
+            _publish_partial_state()
+        for update in updates:
+            _emit_confidence(
+                update.assumption_id,
+                update.previous_confidence,
+                update.new_confidence,
+                update.rationale,
+            )
         _emit_tool_progress(
             "update_beliefs_tool",
             "succeeded",
@@ -930,7 +1301,21 @@ if function_tool is not None:
 
         _emit_tool_progress("propose_decisive_tests_tool", "running", "Proposing decisive follow-up tests.")
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         tests = propose_decisive_tests(state)
+        _record_partial_list("decisive_tests", tests)
+        for test in tests:
+            _emit_node_add(test.id, "test", test.test, stage="tool.propose_decisive_tests_tool")
+            for assumption_id in test.would_resolve:
+                _emit_edge_add(assumption_id, test.id, "tests", stage="tool.propose_decisive_tests_tool")
+        _emit_counter(
+            sources=len(state.sources),
+            evidence=len(state.evidence_items),
+            leaps=len(state.invalid_leaps),
+            conflicts=len(state.evidence_conflicts),
+            tests=len(tests),
+            stage="tool.propose_decisive_tests_tool",
+        )
         _emit_tool_progress(
             "propose_decisive_tests_tool",
             "succeeded",
@@ -980,6 +1365,7 @@ if function_tool is not None:
             backend=_validate_execution_backend(execution_backend),
             fallback_to_local=fallback_to_local,
         )
+        _record_partial_batch(result)
         _emit_tool_progress(
             "run_decisive_test_verifiers_tool",
             "succeeded",
@@ -998,6 +1384,21 @@ if function_tool is not None:
             for invalid_leap in json.loads(invalid_leaps_json)
         ]
         evals = generate_evals_from_failures(invalid_leaps)
+        _record_partial_list("generated_evals", evals)
+        for generated_eval in evals:
+            _emit_node_add(
+                generated_eval.id,
+                "eval",
+                generated_eval.eval_rule,
+                stage="tool.generate_evals_from_failures_tool",
+            )
+            if generated_eval.source_failure_id:
+                _emit_edge_add(
+                    generated_eval.source_failure_id,
+                    generated_eval.id,
+                    "becomes_eval",
+                    stage="tool.generate_evals_from_failures_tool",
+                )
         _emit_tool_progress(
             "generate_evals_from_failures_tool",
             "succeeded",
@@ -1012,7 +1413,12 @@ if function_tool is not None:
 
         _emit_tool_progress("build_eval_workshop_tool", "running", "Building the Workshop connection graph.")
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         workshop = build_eval_workshop(state)
+        partial = _partial_state()
+        if partial is not None:
+            partial.eval_workshop = workshop
+            _publish_partial_state()
         _emit_tool_progress(
             "build_eval_workshop_tool",
             "succeeded",
@@ -1035,10 +1441,15 @@ if function_tool is not None:
             observability_mode=observability_mode,
         )
         state = ResearchState.model_validate_json(state_json)
+        _merge_partial_state(state)
         record = record_research_run(
             state,
             mode=_validate_observability_mode(observability_mode),
         )
+        partial = _partial_state()
+        if partial is not None:
+            partial.observability = record
+            _publish_partial_state()
         _emit_tool_progress(
             "record_observability_tool",
             "succeeded",
@@ -1082,6 +1493,8 @@ if function_tool is not None:
             max_web_sources=max_web_sources,
             observability_mode=_validate_observability_mode(observability_mode),
         )
+        _merge_partial_state(state)
+        _emit_state_graph_snapshot(state, stage="tool.run_deterministic_research_loop_tool")
         _emit_tool_progress(
             "run_deterministic_research_loop_tool",
             "succeeded",
@@ -1112,6 +1525,18 @@ if function_tool is not None:
             extraction_mode=_validate_extraction_mode(extraction_mode),
             observability_mode=_validate_observability_mode(observability_mode),
         )
+        _merge_partial_state(replay.replay_pass)
+        _emit_state_graph_snapshot(replay.replay_pass, stage="tool.run_replay_demo_tool")
+        for comparison in replay.comparisons:
+            _emit_cockpit_event(
+                "node.confidence",
+                stage="tool.run_replay_demo_tool",
+                status="updated",
+                message=f"Replay changed confidence for {comparison.assumption_id}.",
+                id=comparison.assumption_id,
+                **{"from": comparison.before_confidence, "to": comparison.after_confidence},
+                reason=comparison.change_summary,
+            )
         _emit_tool_progress(
             "run_replay_demo_tool",
             "succeeded",
@@ -1211,6 +1636,110 @@ def _coerce_research_state(value: Any) -> ResearchState:
     raise AgentOutputValidationError(
         f"Agent output could not be converted to ResearchState: {type(value).__name__}"
     )
+
+
+def _emit_stream_event(event: Any, delta_buffer: list[str]) -> None:
+    event_type = getattr(event, "type", "")
+    if event_type == "raw_response_event":
+        data = getattr(event, "data", None)
+        delta = getattr(data, "delta", None)
+        if isinstance(delta, str) and delta:
+            delta_buffer.append(delta)
+            if sum(len(chunk) for chunk in delta_buffer) >= 32:
+                _flush_reasoning_delta(delta_buffer)
+        return
+
+    if event_type == "agent_updated_stream_event":
+        agent = getattr(event, "new_agent", None)
+        name = getattr(agent, "name", "agent")
+        _emit_cockpit_event(
+            "agent.update",
+            stage="live_sdk",
+            status="running",
+            message=f"Agent switched to {name}.",
+            name=name,
+        )
+        return
+
+    if event_type != "run_item_stream_event":
+        return
+
+    name = getattr(event, "name", "")
+    item = getattr(event, "item", None)
+    tool_name = _stream_tool_name(item)
+    if name == "tool_called":
+        _emit_cockpit_event(
+            "tool.call",
+            stage=f"tool.{tool_name}" if tool_name else "tool",
+            status="running",
+            message=f"Calling {tool_name or 'tool'}.",
+            name=tool_name,
+            args_preview=_stream_tool_args_preview(item),
+        )
+    elif name == "tool_output":
+        _emit_cockpit_event(
+            "tool.output",
+            stage=f"tool.{tool_name}" if tool_name else "tool",
+            status="succeeded",
+            message=f"{tool_name or 'Tool'} returned output.",
+            name=tool_name,
+            summary=_stream_tool_output_summary(item),
+        )
+    elif name == "reasoning_item_created":
+        _emit_cockpit_event(
+            "reasoning.delta",
+            stage="live_sdk",
+            status="running",
+            message="Reasoning item created.",
+            text="Thinking through the next research step. ",
+        )
+
+
+def _flush_reasoning_delta(delta_buffer: list[str]) -> None:
+    if not delta_buffer:
+        return
+    text = "".join(delta_buffer)
+    delta_buffer.clear()
+    _emit_cockpit_event(
+        "reasoning.delta",
+        stage="live_sdk",
+        status="running",
+        message="Streaming model reasoning.",
+        text=text,
+    )
+
+
+def _stream_tool_name(item: Any) -> str:
+    raw_item = getattr(item, "raw_item", None)
+    for candidate in (
+        getattr(item, "tool_name", None),
+        getattr(item, "name", None),
+        getattr(raw_item, "name", None),
+        getattr(raw_item, "function", None) and getattr(raw_item.function, "name", None),
+    ):
+        if candidate:
+            return str(candidate)
+    return ""
+
+
+def _stream_tool_args_preview(item: Any) -> str:
+    raw_item = getattr(item, "raw_item", None)
+    value = (
+        getattr(item, "arguments", None)
+        or getattr(raw_item, "arguments", None)
+        or getattr(raw_item, "input", None)
+        or ""
+    )
+    return str(value)[:180]
+
+
+def _stream_tool_output_summary(item: Any) -> str:
+    value = getattr(item, "output", None)
+    if value is None:
+        raw_item = getattr(item, "raw_item", None)
+        value = getattr(raw_item, "output", None)
+    text = str(value or "")
+    return text[:220]
 
 
 def _finalize_live_research_state(
@@ -1429,6 +1958,8 @@ def _unique_id(item: Any) -> str:
         return item.id
     if hasattr(item, "task_id"):
         return item.task_id
+    if hasattr(item, "assumption_id"):
+        return item.assumption_id
     raise AttributeError(f"Cannot append unique item without id: {item!r}")
 
 

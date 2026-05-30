@@ -16,6 +16,16 @@ from pragmatic.agents import (
 from pragmatic.cli import main
 
 
+class FakeStreamedRun:
+    def __init__(self, final_output, events=None):
+        self.final_output = final_output
+        self._events = events or []
+
+    async def stream_events(self):
+        for event in self._events:
+            yield event
+
+
 def test_research_manager_deterministic_path_matches_core_loop():
     manager = ResearchManager()
 
@@ -130,13 +140,13 @@ def test_live_sdk_uses_runner_and_validates_state(monkeypatch):
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
     captured = {}
 
-    async def fake_run(agent, prompt, **kwargs):
+    def fake_run_streamed(agent, input, **kwargs):
         captured["agent_name"] = agent.name
-        captured["prompt"] = prompt
+        captured["prompt"] = input
         captured["max_turns"] = kwargs["max_turns"]
-        return SimpleNamespace(final_output=expected.model_dump())
+        return FakeStreamedRun(expected.model_dump())
 
-    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    monkeypatch.setattr(agents_module.Runner, "run_streamed", fake_run_streamed)
 
     state = ResearchManager(model="test-model", max_turns=4).run_live_sync(
         DEFAULT_THESIS,
@@ -166,11 +176,11 @@ def test_live_sdk_finalizes_missing_generated_evals(monkeypatch):
     partial.eval_workshop = None
     partial.observability = None
 
-    async def fake_run(agent, prompt, **kwargs):
-        del agent, prompt, kwargs
-        return SimpleNamespace(final_output=partial.model_dump())
+    def fake_run_streamed(agent, input, **kwargs):
+        del agent, input, kwargs
+        return FakeStreamedRun(partial.model_dump())
 
-    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    monkeypatch.setattr(agents_module.Runner, "run_streamed", fake_run_streamed)
 
     state = ResearchManager().run_live_sync(
         DEFAULT_THESIS,
@@ -200,11 +210,11 @@ def test_cli_live_sdk_writes_schema_valid_output(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
 
-    async def fake_run(agent, prompt, **kwargs):
-        del agent, prompt, kwargs
-        return SimpleNamespace(final_output=expected.model_dump())
+    def fake_run_streamed(agent, input, **kwargs):
+        del agent, input, kwargs
+        return FakeStreamedRun(expected.model_dump())
 
-    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    monkeypatch.setattr(agents_module.Runner, "run_streamed", fake_run_streamed)
     output_path = tmp_path / "live_state.json"
 
     exit_code = main(

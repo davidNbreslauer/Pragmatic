@@ -8,6 +8,15 @@ from pragmatic.cli import main
 from pragmatic.live_harness import load_latest_live_run, run_live_harness_sync
 
 
+class FakeStreamedRun:
+    def __init__(self, final_output):
+        self.final_output = final_output
+
+    async def stream_events(self):
+        if False:
+            yield None
+
+
 def test_live_harness_dry_run_does_not_call_sdk(monkeypatch, tmp_path):
     def fail_if_called(*args, **kwargs):
         del args, kwargs
@@ -52,13 +61,13 @@ def test_live_harness_success_writes_schema_valid_artifact(monkeypatch, tmp_path
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
 
-    async def fake_run(agent, prompt, **kwargs):
+    def fake_run_streamed(agent, input, **kwargs):
         assert agent.name == "ResearchManager"
-        assert "Do not perform live web search" in prompt
+        assert "Do not perform live web search" in input
         assert kwargs["max_turns"] == 3
-        return SimpleNamespace(final_output=expected.model_dump())
+        return FakeStreamedRun(expected.model_dump())
 
-    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    monkeypatch.setattr(agents_module.Runner, "run_streamed", fake_run_streamed)
 
     result = run_live_harness_sync(
         DEFAULT_THESIS,
@@ -123,11 +132,11 @@ def test_live_harness_can_require_demo_proof(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     expected = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="local")
 
-    async def fake_run(agent, prompt, **kwargs):
-        del agent, prompt, kwargs
-        return SimpleNamespace(final_output=expected.model_dump())
+    def fake_run_streamed(agent, input, **kwargs):
+        del agent, input, kwargs
+        return FakeStreamedRun(expected.model_dump())
 
-    monkeypatch.setattr(agents_module.Runner, "run", fake_run)
+    monkeypatch.setattr(agents_module.Runner, "run_streamed", fake_run_streamed)
 
     result = run_live_harness_sync(
         DEFAULT_THESIS,
@@ -169,6 +178,42 @@ def test_live_harness_times_out_live_run(monkeypatch, tmp_path):
     assert result.status == "timed_out"
     assert result.error_type == "TimeoutError"
     assert result.state is None
+
+
+def test_live_harness_recovers_partial_state_on_timeout(monkeypatch, tmp_path):
+    import asyncio
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    partial = ResearchManager().run_deterministic(DEFAULT_THESIS, observability_mode="off")
+    partial.generated_evals = []
+    partial.eval_workshop = None
+    partial.observability = None
+
+    async def slow_run(self, *args, **kwargs):
+        del self, args
+        kwargs["partial_state_callback"](partial)
+        await asyncio.sleep(0.05)
+        return partial
+
+    monkeypatch.setattr(ResearchManager, "run_live", slow_run)
+
+    result = run_live_harness_sync(
+        DEFAULT_THESIS,
+        mode="live",
+        allow_live_sdk=True,
+        timeout_seconds=0.001,
+        observability_mode="off",
+        output_dir=tmp_path,
+    )
+
+    assert result.status == "timed_out"
+    assert result.state is not None
+    assert result.state.evidence_items
+    assert result.state.agent_run is not None
+    assert result.state.agent_run.final_output_validated is False
+    assert result.state.generated_evals
+    assert result.proof is not None
+    assert result.proof.generated_eval_count == len(result.state.generated_evals)
 
 
 def test_load_latest_live_run_can_require_state(monkeypatch, tmp_path):

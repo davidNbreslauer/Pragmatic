@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -18,13 +19,17 @@ from pragmatic.extractors import ExtractionMode
 from pragmatic.raindrop_client import ObservabilityMode
 from pragmatic.research_loop import DEFAULT_THESIS
 from pragmatic.schemas import (
+    AgentRunRecord,
+    AgentRunStep,
     ExecutionBackend,
+    GeneratedEval,
     LiveRunGuardrails,
     LiveRunProof,
     LiveRunResult,
     LiveRunStatus,
     ResearchState,
     SourceAcquisitionMode,
+    TraceEvent,
 )
 
 
@@ -57,14 +62,138 @@ def run_live_harness_sync(
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(
-            run_live_harness(
+        return _run_live_harness_sync_impl(
+            thesis_text,
+            model=model,
+            mode=mode,
+            allow_live_sdk=allow_live_sdk,
+            max_turns=max_turns,
+            timeout_seconds=timeout_seconds,
+            max_iterations=max_iterations,
+            corpus_path=corpus_path,
+            execution_backend=execution_backend,
+            extraction_mode=extraction_mode,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+            output_dir=output_dir,
+            write_artifact=write_artifact,
+            require_demo_proof=require_demo_proof,
+            progress_callback=progress_callback,
+        )
+    raise RuntimeError("Use run_live_harness from an active event loop.")
+
+
+def _run_live_harness_sync_impl(
+    thesis_text: str = DEFAULT_THESIS,
+    *,
+    model: str | None = None,
+    mode: str = "dry_run",
+    allow_live_sdk: bool = False,
+    max_turns: int = 4,
+    timeout_seconds: float = 60.0,
+    max_iterations: int = 1,
+    corpus_path: str | Path | None = None,
+    execution_backend: ExecutionBackend = "local",
+    extraction_mode: ExtractionMode = "local",
+    source_mode: SourceAcquisitionMode = "prepared",
+    allow_live_web_search: bool = False,
+    web_search_model: str | None = None,
+    max_web_sources: int = 8,
+    observability_mode: ObservabilityMode = "local",
+    output_dir: str | Path | None = None,
+    write_artifact: bool = True,
+    require_demo_proof: bool = False,
+    progress_callback: ProgressCallback | None = None,
+) -> LiveRunResult:
+    guardrails = LiveRunGuardrails(
+        mode="live" if mode == "live" else "dry_run",
+        allow_live_sdk=allow_live_sdk,
+        source_mode=source_mode,
+        prepared_corpus_only=source_mode == "prepared",
+        allow_live_web_search=allow_live_web_search,
+        web_search_model=web_search_model,
+        max_web_sources=max_web_sources,
+        max_turns=max_turns,
+        timeout_seconds=timeout_seconds,
+        max_iterations=max_iterations,
+        execution_backend=execution_backend,
+        observability_backend=observability_mode,
+    )
+    result_id = _live_run_id()
+    created_at = _utc_now()
+    credentials_available = bool(os.getenv("OPENAI_API_KEY"))
+
+    if guardrails.mode == "dry_run":
+        result = LiveRunResult(
+            id=result_id,
+            created_at=created_at,
+            completed_at=_utc_now(),
+            elapsed_seconds=0.0,
+            mode=guardrails.mode,
+            status="ready",
+            thesis_text=thesis_text,
+            model=model,
+            guardrails=guardrails,
+            credentials_available=credentials_available,
+            message=(
+                "Dry run validated the live SDK guardrails. No OpenAI API call was made."
+            ),
+        )
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "guardrails",
+                    "status": "succeeded",
+                    "message": "Dry run validated live SDK guardrails.",
+                    "metadata": {"mode": guardrails.mode},
+                }
+            )
+        return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+    if not allow_live_sdk:
+        result = _blocked_result(
+            result_id,
+            created_at,
+            thesis_text,
+            model,
+            guardrails,
+            credentials_available,
+            LiveAgentsSDKNotEnabled(
+                "Live OpenAI Agents SDK execution requires explicit opt-in with allow_live_sdk=True."
+            ),
+        )
+        return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+    if not credentials_available:
+        result = _blocked_result(
+            result_id,
+            created_at,
+            thesis_text,
+            model,
+            guardrails,
+            credentials_available,
+            AgentsSDKCredentialsError(
+                "Live OpenAI Agents SDK execution requires OPENAI_API_KEY."
+            ),
+        )
+        return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+    manager = ResearchManager(model=model, max_turns=max_turns)
+    latest_partial_state: ResearchState | None = None
+    state_box: dict[str, ResearchState] = {}
+    error_box: dict[str, BaseException] = {}
+
+    def remember_partial_state(state: ResearchState) -> None:
+        nonlocal latest_partial_state
+        latest_partial_state = state
+
+    def run_worker() -> None:
+        try:
+            state_box["state"] = manager.run_live_sync(
                 thesis_text,
-                model=model,
-                mode=mode,
-                allow_live_sdk=allow_live_sdk,
-                max_turns=max_turns,
-                timeout_seconds=timeout_seconds,
                 max_iterations=max_iterations,
                 corpus_path=corpus_path,
                 execution_backend=execution_backend,
@@ -74,13 +203,127 @@ def run_live_harness_sync(
                 web_search_model=web_search_model,
                 max_web_sources=max_web_sources,
                 observability_mode=observability_mode,
-                output_dir=output_dir,
-                write_artifact=write_artifact,
-                require_demo_proof=require_demo_proof,
+                allow_live_sdk=True,
                 progress_callback=progress_callback,
+                partial_state_callback=remember_partial_state,
             )
+        except BaseException as exc:  # pragma: no cover - exercised by harness result path.
+            error_box["error"] = exc
+
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "live_harness",
+                "status": "running",
+                "message": "Live run harness accepted guardrails and started the research manager.",
+                "metadata": {
+                    "mode": guardrails.mode,
+                    "execution_backend": execution_backend,
+                    "source_mode": source_mode,
+                },
+            }
         )
-    raise RuntimeError("Use run_live_harness from an active event loop.")
+
+    started = time.monotonic()
+    worker = threading.Thread(
+        target=run_worker,
+        name="pragmatic-live-sdk-worker",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout_seconds)
+
+    if worker.is_alive():
+        recovered = _recover_partial_state(
+            latest_partial_state,
+            manager=manager,
+            model=model,
+            guardrails=guardrails,
+            execution_backend=execution_backend,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+            progress_callback=progress_callback,
+            reason=f"Live SDK run exceeded the {timeout_seconds:.1f}s timeout.",
+        )
+        proof = build_live_run_proof(recovered, guardrails) if recovered is not None else None
+        result = _failed_result(
+            result_id,
+            created_at,
+            thesis_text,
+            model,
+            guardrails,
+            credentials_available,
+            status="timed_out",
+            error=TimeoutError(),
+            elapsed_seconds=time.monotonic() - started,
+            message=f"Live SDK run exceeded the {timeout_seconds:.1f}s timeout.",
+            state=recovered,
+            proof=proof,
+        )
+        return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+    if "error" in error_box:
+        error = error_box["error"]
+        recovered = _recover_partial_state(
+            latest_partial_state,
+            manager=manager,
+            model=model,
+            guardrails=guardrails,
+            execution_backend=execution_backend,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+            progress_callback=progress_callback,
+            reason=_error_message("Live SDK run failed", error),
+        )
+        proof = build_live_run_proof(recovered, guardrails) if recovered is not None else None
+        result = _failed_result(
+            result_id,
+            created_at,
+            thesis_text,
+            model,
+            guardrails,
+            credentials_available,
+            status="failed",
+            error=error if isinstance(error, Exception) else RuntimeError(str(error)),
+            elapsed_seconds=time.monotonic() - started,
+            message=_error_message("Live SDK run failed", error),
+            state=recovered,
+            proof=proof,
+        )
+        return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
+
+    state = state_box["state"]
+    proof = build_live_run_proof(state, guardrails)
+    status: LiveRunStatus = "succeeded"
+    message = "Live OpenAI Agents SDK run completed and returned a valid ResearchState."
+    if require_demo_proof and not proof.demo_ready:
+        status = "failed"
+        message = f"Live SDK run completed, but demo proof was incomplete. {proof.summary}"
+    result = LiveRunResult(
+        id=result_id,
+        created_at=created_at,
+        completed_at=_utc_now(),
+        elapsed_seconds=time.monotonic() - started,
+        mode=guardrails.mode,
+        status=status,
+        thesis_text=thesis_text,
+        model=model,
+        guardrails=guardrails,
+        credentials_available=credentials_available,
+        state=state,
+        trace_path=_trace_path(state),
+        trace_id=_trace_id(state),
+        proof=proof,
+        message=message,
+        error_type="DemoProofIncomplete" if status == "failed" else None,
+    )
+    return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
 
 
 async def run_live_harness(
@@ -180,6 +423,12 @@ async def run_live_harness(
 
     manager = ResearchManager(model=model, max_turns=max_turns)
     started = time.monotonic()
+    latest_partial_state: ResearchState | None = None
+
+    def remember_partial_state(state: ResearchState) -> None:
+        nonlocal latest_partial_state
+        latest_partial_state = state
+
     try:
         if progress_callback is not None:
             progress_callback(
@@ -195,7 +444,8 @@ async def run_live_harness(
                 }
             )
         state = await asyncio.wait_for(
-            manager.run_live(
+            asyncio.to_thread(
+                manager.run_live_sync,
                 thesis_text,
                 max_iterations=max_iterations,
                 corpus_path=corpus_path,
@@ -208,10 +458,26 @@ async def run_live_harness(
                 observability_mode=observability_mode,
                 allow_live_sdk=True,
                 progress_callback=progress_callback,
+                partial_state_callback=remember_partial_state,
             ),
             timeout=timeout_seconds,
         )
     except TimeoutError as exc:
+        recovered = _recover_partial_state(
+            latest_partial_state,
+            manager=manager,
+            model=model,
+            guardrails=guardrails,
+            execution_backend=execution_backend,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+            progress_callback=progress_callback,
+            reason=f"Live SDK run exceeded the {timeout_seconds:.1f}s timeout.",
+        )
+        proof = build_live_run_proof(recovered, guardrails) if recovered is not None else None
         result = _failed_result(
             result_id,
             created_at,
@@ -223,9 +489,26 @@ async def run_live_harness(
             error=exc,
             elapsed_seconds=time.monotonic() - started,
             message=f"Live SDK run exceeded the {timeout_seconds:.1f}s timeout.",
+            state=recovered,
+            proof=proof,
         )
         return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
     except Exception as exc:
+        recovered = _recover_partial_state(
+            latest_partial_state,
+            manager=manager,
+            model=model,
+            guardrails=guardrails,
+            execution_backend=execution_backend,
+            source_mode=source_mode,
+            allow_live_web_search=allow_live_web_search,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+            progress_callback=progress_callback,
+            reason=_error_message("Live SDK run failed", exc),
+        )
+        proof = build_live_run_proof(recovered, guardrails) if recovered is not None else None
         result = _failed_result(
             result_id,
             created_at,
@@ -237,6 +520,8 @@ async def run_live_harness(
             error=exc,
             elapsed_seconds=time.monotonic() - started,
             message=_error_message("Live SDK run failed", exc),
+            state=recovered,
+            proof=proof,
         )
         return _maybe_write_result(result, output_dir=output_dir, write_artifact=write_artifact)
 
@@ -318,6 +603,149 @@ def build_live_run_proof(
     )
 
 
+def _recover_partial_state(
+    state: ResearchState | None,
+    *,
+    manager: ResearchManager,
+    model: str | None,
+    guardrails: LiveRunGuardrails,
+    execution_backend: ExecutionBackend,
+    source_mode: SourceAcquisitionMode,
+    allow_live_web_search: bool,
+    web_search_model: str | None,
+    max_web_sources: int,
+    observability_mode: ObservabilityMode,
+    progress_callback: ProgressCallback | None,
+    reason: str,
+) -> ResearchState | None:
+    if state is None:
+        return None
+
+    recovered = state.model_copy(deep=True)
+    recovered.trace_events.append(
+        TraceEvent(
+            id=f"trace_{len(recovered.trace_events) + 1:03d}",
+            stage="agent",
+            message="Recovered a partial ResearchState from completed live SDK tool calls.",
+            metadata={"reason": reason},
+        )
+    )
+    _ensure_recovery_eval(recovered, reason=reason)
+    recovery_source_mode: SourceAcquisitionMode = source_mode if recovered.sources else "prepared"
+    recovery_allows_web = allow_live_web_search and recovery_source_mode == "web"
+    recovery_backend: ExecutionBackend = (
+        execution_backend if recovered.evidence_items or recovered.research_task_results else "local"
+    )
+    if recovery_source_mode == "prepared" and source_mode == "web":
+        recovered.trace_events.append(
+            TraceEvent(
+                id=f"trace_{len(recovered.trace_events) + 1:03d}",
+                stage="agent",
+                message="Partial recovery skipped new live-web acquisition and used the prepared corpus.",
+                metadata={"reason": "No completed live sources were available before the deadline."},
+            )
+        )
+
+    try:
+        recovered = manager.finalize_partial_state(
+            recovered,
+            execution_backend=recovery_backend,
+            source_mode=recovery_source_mode,
+            allow_live_web_search=recovery_allows_web,
+            web_search_model=web_search_model,
+            max_web_sources=max_web_sources,
+            observability_mode=observability_mode,
+        )
+    except Exception as first_error:
+        recovered.trace_events.append(
+            TraceEvent(
+                id=f"trace_{len(recovered.trace_events) + 1:03d}",
+                stage="agent",
+                message="Live-source finalization failed; retrying partial recovery with the prepared corpus.",
+                metadata={"error": f"{type(first_error).__name__}: {first_error}"},
+            )
+        )
+        try:
+            recovered = manager.finalize_partial_state(
+                recovered,
+                execution_backend="local",
+                source_mode="prepared",
+                allow_live_web_search=False,
+                web_search_model=web_search_model,
+                max_web_sources=max_web_sources,
+                observability_mode=observability_mode,
+            )
+        except Exception as second_error:
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "stage": "partial_recovery",
+                        "status": "failed",
+                        "message": "Partial state recovery failed.",
+                        "metadata": {
+                            "error": f"{type(second_error).__name__}: {second_error}",
+                        },
+                    }
+                )
+            return None
+
+    recovered.agent_run = AgentRunRecord(
+        mode="live_sdk",
+        status="failed",
+        agent_name="ResearchManager",
+        model=model,
+        tool_names=[],
+        steps=[
+            AgentRunStep(
+                id="agent_step_partial_recovery",
+                tool_name="Runner.run",
+                status="failed",
+                summary="Live SDK run did not return final output; answer assembled from completed tool outputs.",
+            )
+        ],
+        final_output_validated=False,
+        message="Recovered from partial live SDK tool state after the final model response failed.",
+    )
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "partial_recovery",
+                "status": "succeeded",
+                "message": "Recovered answer from completed live tool outputs.",
+                "metadata": {
+                    "sources": len(recovered.sources),
+                    "evidence": len(recovered.evidence_items),
+                    "generated_evals": len(recovered.generated_evals),
+                },
+            }
+        )
+    return recovered
+
+
+def _ensure_recovery_eval(state: ResearchState, *, reason: str) -> None:
+    if state.generated_evals:
+        return
+    state.generated_evals.append(
+        GeneratedEval(
+            id="eval_live_sdk_finalization_recovery",
+            source_failure_id=None,
+            failure_observed=reason,
+            root_cause=(
+                "The live OpenAI Agents SDK path completed useful tool calls but did not "
+                "return a final schema-valid ResearchState in time."
+            ),
+            eval_rule=(
+                "If live SDK orchestration times out or exceeds turns after tool calls, "
+                "Pragmatic must preserve partial tool outputs and assemble an inspectable answer."
+            ),
+            expected_behavior=(
+                "The UI should show recovered assumptions, sources, evidence, belief updates, "
+                "and trace artifacts instead of an empty answer."
+            ),
+        )
+    )
+
+
 def load_live_run_result(path: str | Path) -> LiveRunResult:
     artifact_path = Path(path)
     result = LiveRunResult.model_validate_json(artifact_path.read_text(encoding="utf-8"))
@@ -387,6 +815,8 @@ def _failed_result(
     error: Exception,
     elapsed_seconds: float,
     message: str,
+    state: ResearchState | None = None,
+    proof: LiveRunProof | None = None,
 ) -> LiveRunResult:
     return LiveRunResult(
         id=result_id,
@@ -399,6 +829,10 @@ def _failed_result(
         model=model,
         guardrails=guardrails,
         credentials_available=credentials_available,
+        state=state,
+        trace_path=_trace_path(state) if state is not None else None,
+        trace_id=_trace_id(state) if state is not None else None,
+        proof=proof,
         message=message,
         error_type=type(error).__name__,
     )

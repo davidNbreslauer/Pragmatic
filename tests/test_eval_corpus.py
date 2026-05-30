@@ -3,11 +3,14 @@ import json
 from thesisgraph import DEFAULT_THESIS
 from thesisgraph.cli import main
 from thesisgraph.eval_corpus import (
+    compare_eval_baseline,
     compare_eval_snapshot,
     create_eval_snapshot,
+    load_eval_baseline,
     list_eval_snapshots,
     load_eval_snapshot,
     save_eval_snapshot,
+    write_eval_baseline,
 )
 
 
@@ -64,6 +67,27 @@ def test_compare_eval_snapshot_detects_generated_eval_fixture_change():
     assert comparison.fixture_deltas[0].status == "changed"
 
 
+def test_write_eval_baseline_uses_stable_metadata(tmp_path):
+    baseline_path = write_eval_baseline(tmp_path / "default_v1.json")
+
+    baseline = load_eval_baseline(baseline_path)
+
+    assert baseline.snapshot_id == "default_v1"
+    assert baseline.created_at == "2026-05-30T00:00:00+00:00"
+    assert baseline.suite_result.id == "eval_suite_default_v1"
+    assert baseline.suite_result.created_at == "2026-05-30T00:00:00+00:00"
+    assert baseline.suite_result.status == "pass"
+
+
+def test_compare_eval_baseline_matches_current_behavior(tmp_path):
+    baseline_path = write_eval_baseline(tmp_path / "default_v1.json")
+
+    comparison = compare_eval_baseline(baseline_path)
+
+    assert comparison.status == "match"
+    assert comparison.summary == "Current eval behavior matches the saved snapshot."
+
+
 def test_cli_saves_lists_and_compares_eval_snapshot(tmp_path):
     save_code = main(
         [
@@ -93,3 +117,37 @@ def test_cli_saves_lists_and_compares_eval_snapshot(tmp_path):
     assert list_code == 0
     assert compare_code == 0
     assert payload["status"] == "match"
+
+
+def test_cli_exports_and_checks_eval_baseline(tmp_path):
+    baseline_path = tmp_path / "default_v1.json"
+
+    export_code = main(["export-eval-baseline", str(baseline_path)])
+    check_code = main(
+        [
+            "check-eval-baseline",
+            str(baseline_path),
+            "--fail-on-regression",
+        ]
+    )
+
+    assert export_code == 0
+    assert check_code == 0
+
+
+def test_cli_check_eval_baseline_can_fail_on_fixture_change(tmp_path):
+    baseline_path = tmp_path / "default_v1.json"
+    write_eval_baseline(baseline_path)
+    baseline = load_eval_baseline(baseline_path)
+    baseline.generated_eval_fixtures[0].eval_rule = "Changed expected rule."
+    baseline_path.write_text(baseline.model_dump_json(indent=2), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "check-eval-baseline",
+            str(baseline_path),
+            "--fail-on-change",
+        ]
+    )
+
+    assert exit_code == 1

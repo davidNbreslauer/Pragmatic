@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Sequence
 
 from thesisgraph.eval_corpus import (
+    compare_eval_baseline,
     compare_eval_snapshot_by_id,
     list_eval_snapshots,
     save_eval_snapshot,
+    write_eval_baseline,
 )
 from thesisgraph.eval_suite import export_generated_eval_cases, run_eval_suite
 from thesisgraph.research_loop import DEFAULT_THESIS, run_research_loop
@@ -66,6 +68,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     list_parser.add_argument("--corpus-dir")
 
+    export_baseline_parser = subparsers.add_parser(
+        "export-eval-baseline",
+        help="Export a deterministic, repo-trackable eval baseline.",
+    )
+    export_baseline_parser.add_argument("output")
+    export_baseline_parser.add_argument("--thesis", default=DEFAULT_THESIS)
+    export_baseline_parser.add_argument("--max-iterations", type=int, default=1)
+    export_baseline_parser.add_argument("--snapshot-id", default="default_v1")
+    export_baseline_parser.add_argument(
+        "--allow-fail",
+        action="store_true",
+        help="Export the baseline even when the regression suite fails.",
+    )
+
+    check_baseline_parser = subparsers.add_parser(
+        "check-eval-baseline",
+        help="Compare current eval behavior against a committed baseline file.",
+    )
+    check_baseline_parser.add_argument("baseline")
+    check_baseline_parser.add_argument("--thesis", default=DEFAULT_THESIS)
+    check_baseline_parser.add_argument("--max-iterations", type=int, default=1)
+    check_baseline_parser.add_argument("--output")
+    check_baseline_parser.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit non-zero when a passing baseline gate now fails.",
+    )
+    check_baseline_parser.add_argument(
+        "--fail-on-change",
+        action="store_true",
+        help="Exit non-zero on any gate or generated-eval fixture drift.",
+    )
+
     export_parser = subparsers.add_parser(
         "export-generated-evals",
         help="Run the deterministic loop and export generated eval fixtures.",
@@ -120,6 +155,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "list-eval-snapshots":
         summaries = list_eval_snapshots(corpus_dir=args.corpus_dir)
         print(json.dumps([summary.model_dump() for summary in summaries], indent=2))
+        return 0
+
+    if args.command == "export-eval-baseline":
+        path = write_eval_baseline(
+            args.output,
+            args.thesis,
+            max_iterations=args.max_iterations,
+            snapshot_id=args.snapshot_id,
+            require_pass=not args.allow_fail,
+        )
+        print(path)
+        return 0
+
+    if args.command == "check-eval-baseline":
+        comparison = compare_eval_baseline(
+            args.baseline,
+            thesis_text=args.thesis,
+            max_iterations=args.max_iterations,
+        )
+        payload = json.dumps(comparison.model_dump(), indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        if args.fail_on_change and comparison.status != "match":
+            return 1
+        if args.fail_on_regression and comparison.status == "regression":
+            return 1
         return 0
 
     if args.command == "export-generated-evals":

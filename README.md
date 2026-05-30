@@ -81,6 +81,16 @@ PYTHONPATH=src python -m thesisgraph list-eval-snapshots
 PYTHONPATH=src python -m thesisgraph compare-eval-snapshot <snapshot-id> --fail-on-regression
 ```
 
+## Milestone 16
+
+The eval corpus now has a committed known-good baseline and a CI-ready regression gate. `eval_baselines/default_v1.json` is generated through the canonical baseline exporter, and `check-eval-baseline` compares the current deterministic loop against that tracked baseline. CI runs tests, bytecode compilation, and the baseline check.
+
+```bash
+PYTHONPATH=src python -m thesisgraph export-eval-baseline eval_baselines/default_v1.json
+PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
+PYTHONPATH=src python -m thesisgraph check-eval-baseline eval_baselines/default_v1.json --fail-on-change
+```
+
 Run tests:
 
 ```bash

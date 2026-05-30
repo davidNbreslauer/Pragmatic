@@ -21,6 +21,8 @@ from thesisgraph.schemas import (
 
 DEFAULT_EVAL_CORPUS_DIR = Path(".thesisgraph") / "eval_corpus"
 INDEX_FILENAME = "index.json"
+DEFAULT_BASELINE_SNAPSHOT_ID = "default_v1"
+CANONICAL_BASELINE_CREATED_AT = "2026-05-30T00:00:00+00:00"
 
 
 def create_eval_snapshot(
@@ -75,6 +77,66 @@ def save_eval_snapshot(
     summary = summarize_eval_snapshot(snapshot, path=path)
     _write_index(directory, _upsert_summary(_read_index(directory), summary))
     return summary
+
+
+def create_canonical_eval_snapshot(
+    thesis_text: str = DEFAULT_THESIS,
+    *,
+    max_iterations: int = 1,
+    snapshot_id: str = DEFAULT_BASELINE_SNAPSHOT_ID,
+    created_at: str = CANONICAL_BASELINE_CREATED_AT,
+) -> EvalCorpusSnapshot:
+    snapshot = create_eval_snapshot(
+        thesis_text,
+        max_iterations=max_iterations,
+        snapshot_id=snapshot_id,
+    )
+    snapshot.created_at = created_at
+    snapshot.suite_result.id = f"eval_suite_{snapshot_id}"
+    snapshot.suite_result.created_at = created_at
+    return snapshot
+
+
+def write_eval_baseline(
+    output_path: str | Path,
+    thesis_text: str = DEFAULT_THESIS,
+    *,
+    max_iterations: int = 1,
+    snapshot_id: str = DEFAULT_BASELINE_SNAPSHOT_ID,
+    require_pass: bool = True,
+) -> Path:
+    snapshot = create_canonical_eval_snapshot(
+        thesis_text,
+        max_iterations=max_iterations,
+        snapshot_id=snapshot_id,
+    )
+    if require_pass and snapshot.suite_result.status != "pass":
+        raise ValueError("Refusing to export a baseline because the eval suite failed.")
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def load_eval_baseline(path: str | Path) -> EvalCorpusSnapshot:
+    return EvalCorpusSnapshot.model_validate_json(Path(path).read_text(encoding="utf-8"))
+
+
+def compare_eval_baseline(
+    baseline_path: str | Path,
+    current: EvalCorpusSnapshot | None = None,
+    *,
+    thesis_text: str = DEFAULT_THESIS,
+    max_iterations: int = 1,
+) -> EvalSnapshotComparison:
+    baseline = load_eval_baseline(baseline_path)
+    return compare_eval_snapshot(
+        baseline,
+        current,
+        thesis_text=thesis_text,
+        max_iterations=max_iterations,
+    )
 
 
 def load_eval_snapshot(

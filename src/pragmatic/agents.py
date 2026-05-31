@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import json
 import os
+import time
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -61,13 +62,19 @@ from pragmatic.schemas import (
 from pragmatic.verifiers import build_verifier_tasks
 
 try:
-    from agents import Agent, Runner, function_tool
+    from agents import Agent, ModelSettings, Runner, function_tool
     from agents.agent_output import AgentOutputSchema
 except ImportError:  # pragma: no cover - exercised only when the SDK is absent.
     Agent = None  # type: ignore[assignment]
     AgentOutputSchema = None  # type: ignore[assignment]
+    ModelSettings = None  # type: ignore[assignment]
     Runner = None  # type: ignore[assignment]
     function_tool = None  # type: ignore[assignment]
+
+try:
+    from openai.types.shared import Reasoning
+except ImportError:  # pragma: no cover - OpenAI is a required dependency in normal installs.
+    Reasoning = None  # type: ignore[assignment]
 
 
 class AgentsSDKUnavailable(RuntimeError):
@@ -732,12 +739,17 @@ class ResearchManager:
 
     def build_agent(self) -> Any:
         _require_agents_sdk()
+        model_settings = _reasoning_summary_model_settings()
+        agent_kwargs: dict[str, Any] = {}
+        if model_settings is not None:
+            agent_kwargs["model_settings"] = model_settings
         return Agent(
             name="ResearchManager",
             instructions=RESEARCH_MANAGER_INSTRUCTIONS,
             model=self.model,
             tools=build_research_tools(),
             output_type=AgentOutputSchema(ResearchState, strict_json_schema=False),
+            **agent_kwargs,
         )
 
     def run_live_sync(
@@ -839,7 +851,7 @@ class ResearchManager:
                 max_turns=self.max_turns,
             )
             result = Runner.run_streamed(agent, input=prompt, max_turns=self.max_turns)
-            delta_buffer: list[str] = []
+            delta_buffer: dict[str, Any] = {"chunks": [], "last_flush": time.monotonic()}
             async for event in result.stream_events():
                 _emit_stream_event(event, delta_buffer)
             _flush_reasoning_delta(delta_buffer)
@@ -913,6 +925,18 @@ def _require_agents_sdk() -> None:
         raise AgentsSDKUnavailable(
             "Install the OpenAI Agents SDK with `pip install openai-agents` to use live orchestration."
         )
+
+
+def _reasoning_summary_model_settings() -> Any | None:
+    if ModelSettings is None or Reasoning is None:
+        return None
+    try:
+        return ModelSettings(reasoning=Reasoning(summary="auto"))
+    except Exception:
+        try:
+            return ModelSettings(reasoning=Reasoning(generate_summary="auto"))
+        except Exception:
+            return None
 
 
 def _require_live_sdk_enabled(allow_live_sdk: bool) -> None:
@@ -1643,15 +1667,14 @@ def _coerce_research_state(value: Any) -> ResearchState:
     )
 
 
-def _emit_stream_event(event: Any, delta_buffer: list[str]) -> None:
+def _emit_stream_event(event: Any, delta_buffer: dict[str, Any]) -> None:
     event_type = getattr(event, "type", "")
     if event_type == "raw_response_event":
         data = getattr(event, "data", None)
+        data_type = getattr(data, "type", "")
         delta = getattr(data, "delta", None)
-        if isinstance(delta, str) and delta:
-            delta_buffer.append(delta)
-            if sum(len(chunk) for chunk in delta_buffer) >= 32:
-                _flush_reasoning_delta(delta_buffer)
+        if _should_forward_reasoning_delta(data_type, delta):
+            _buffer_reasoning_delta(delta_buffer, delta)
         return
 
     if event_type == "agent_updated_stream_event":
@@ -1700,11 +1723,49 @@ def _emit_stream_event(event: Any, delta_buffer: list[str]) -> None:
         )
 
 
-def _flush_reasoning_delta(delta_buffer: list[str]) -> None:
-    if not delta_buffer:
+def _should_forward_reasoning_delta(data_type: str, delta: Any) -> bool:
+    if not isinstance(delta, str) or not delta:
+        return False
+    if data_type == "response.reasoning_summary_text.delta":
+        return True
+    if data_type != "response.output_text.delta":
+        return False
+    return _looks_like_prose_delta(delta)
+
+
+def _looks_like_prose_delta(delta: str) -> bool:
+    stripped = delta.strip()
+    if not stripped:
+        return False
+    if stripped[0] in "{}[]\":,":
+        return False
+    punctuation_count = sum(delta.count(char) for char in "{}[]\":")
+    return punctuation_count <= max(2, len(delta) // 6)
+
+
+def _buffer_reasoning_delta(delta_buffer: dict[str, Any], delta: str) -> None:
+    chunks = delta_buffer.setdefault("chunks", [])
+    chunks.append(delta)
+    text = "".join(chunks)
+    now = time.monotonic()
+    last_flush = float(delta_buffer.get("last_flush", now))
+    if (
+        now - last_flush >= 0.05
+        or len(text) >= 160
+        or text.endswith((".", "?", "!", "\n", "; "))
+    ):
+        _flush_reasoning_delta(delta_buffer)
+
+
+def _flush_reasoning_delta(delta_buffer: dict[str, Any]) -> None:
+    chunks = delta_buffer.get("chunks") or []
+    if not chunks:
         return
-    text = "".join(delta_buffer)
-    delta_buffer.clear()
+    text = "".join(chunks)
+    delta_buffer["chunks"] = []
+    delta_buffer["last_flush"] = time.monotonic()
+    if not text.strip():
+        return
     _emit_cockpit_event(
         "reasoning.delta",
         stage="live_sdk",

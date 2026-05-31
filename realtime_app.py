@@ -1196,6 +1196,7 @@ INDEX_HTML = """<!doctype html>
     .link.tests, .link.becomes_eval { stroke: var(--accent-2); }
     .link.dim { opacity: .08; }
     .link.focus { opacity: .95; stroke-width: 2px; }
+    .link.growing { animation: linkGrow .85s var(--ease) both; }
     .node { opacity: 0; cursor: pointer; animation: nodeIn .35s var(--ease) forwards; transition: opacity .22s ease, transform .4s var(--ease); }
     .node .shape { stroke: rgba(255,255,255,.82); stroke-width: 1.4px; transition: fill .35s ease, filter .35s ease, stroke .25s ease, r .25s ease; }
     .node text { font-size: 10px; font-weight: 650; pointer-events: none; fill: rgba(232,237,244,.84); paint-order: stroke; stroke: rgba(7,10,15,.88); stroke-width: 3px; }
@@ -1203,8 +1204,13 @@ INDEX_HTML = """<!doctype html>
     .node .badge-text { font: 9px var(--font-mono); fill: var(--text); stroke: none; }
     .node.dim { opacity: .18; }
     .node.focus .shape, .node.highlight .shape { stroke: var(--accent); stroke-width: 3px; filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 24px var(--accent)) !important; }
+    .node.growing .shape { animation: nodeGrow .62s var(--ease) both; transform-box: fill-box; transform-origin: center; }
+    .node.badge-pulse .badge { animation: badgePulse .8s var(--ease) both; }
     .node.pulse .shape { animation: nodePulse .72s var(--ease); stroke: var(--accent-warn); }
     @keyframes nodePulse { 0% { stroke-width: 9px; filter: drop-shadow(0 0 4px var(--accent-warn)) drop-shadow(0 0 30px var(--accent-warn)); } 100% { stroke-width: 1.4px; } }
+    @keyframes nodeGrow { 0% { opacity: .25; transform: scale(.35); } 70% { transform: scale(1.16); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes linkGrow { 0% { opacity: 0; stroke-width: 4px; } 60% { opacity: .9; } 100% { opacity: 1; stroke-width: 1.3px; } }
+    @keyframes badgePulse { 0% { stroke: var(--accent); filter: drop-shadow(0 0 0 rgba(94,230,201,0)); } 45% { stroke: var(--accent); filter: drop-shadow(0 0 18px rgba(94,230,201,.55)); } 100% { filter: none; } }
     .graph-detail {
       position: absolute;
       left: 12px;
@@ -1748,6 +1754,7 @@ INDEX_HTML = """<!doctype html>
         label: meta.label || meta.id,
         confidence: Number(meta.confidence ?? .5),
         previousConfidence: Number(meta.confidence ?? .5),
+        growingUntil: performance.now() + 900,
       };
       nodeById.set(node.id, node);
       graphNodes.push(node);
@@ -1764,13 +1771,20 @@ INDEX_HTML = """<!doctype html>
       if (pair) {
         if (pair.relation !== (meta.relation || "relates")) {
           pair.relation = meta.relation || "relates";
+          pair.growingUntil = performance.now() + 900;
           flashNode(pair.target);
         }
         updateGraph();
         return;
       }
       if (graphLinks.some(link => link.id === id)) return;
-      graphLinks.push({id, source: meta.from, target: meta.to, relation: meta.relation || "relates"});
+      graphLinks.push({id, source: meta.from, target: meta.to, relation: meta.relation || "relates", growingUntil: performance.now() + 900});
+      const sourceNode = nodeById.get(meta.from);
+      const targetNode = nodeById.get(meta.to);
+      if (sourceNode?.kind === "evidence" && targetNode?.kind === "assumption") {
+        targetNode.badgePulseUntil = performance.now() + 900;
+        flashNode(targetNode.id);
+      }
       if (meta.relation === "contradicts") bumpCounter("conflicts");
       if (meta.relation === "proxy_only") bumpCounter("leaps");
       updateGraph();
@@ -1831,7 +1845,7 @@ INDEX_HTML = """<!doctype html>
         node.relationCounts = relationCountsFor(node.id, evidenceByAssumption);
         node.visible = true;
         visibleNodes.push(node);
-        visibleLinks.push({id: `thesis->${node.id}`, source: "thesis", target: node.id, relation: "supports", synthetic: true});
+        visibleLinks.push({id: `thesis->${node.id}`, source: "thesis", target: node.id, relation: "supports", synthetic: true, growingUntil: node.growingUntil});
         if (!expandedNodes.has(node.id)) return;
         const leaves = evidenceByAssumption.get(node.id) || [];
         leaves.forEach((entry, leafIndex) => {
@@ -1843,7 +1857,7 @@ INDEX_HTML = """<!doctype html>
           leaf.y = node.y + Math.sin(leafAngle) * evidenceRadius * .78;
           leaf.visible = true;
           visibleNodes.push(leaf);
-          visibleLinks.push({id: `${leaf.id}->${node.id}:${entry.relation}`, source: leaf.id, target: node.id, relation: entry.relation});
+          visibleLinks.push({id: `${leaf.id}->${node.id}:${entry.relation}`, source: leaf.id, target: node.id, relation: entry.relation, growingUntil: entry.link?.growingUntil});
         });
       });
       return {nodes: visibleNodes, links: visibleLinks};
@@ -1856,7 +1870,7 @@ INDEX_HTML = """<!doctype html>
         if (!source || !target) return;
         if (source.kind === "evidence" && target.kind === "assumption") {
           if (!groups.has(target.id)) groups.set(target.id, []);
-          groups.get(target.id).push({node: source, relation: link.relation || "supports"});
+          groups.get(target.id).push({node: source, relation: link.relation || "supports", link});
         }
       });
       groups.forEach(entries => entries.sort((a, b) => relationRank(a.relation) - relationRank(b.relation) || a.node.id.localeCompare(b.node.id)));
@@ -1885,6 +1899,7 @@ INDEX_HTML = """<!doctype html>
     }
     function renderLinks(visibleLinks) {
       const visibleIds = new Set(visibleLinks.map(link => link.id));
+      const now = performance.now();
       [...linkLayer.querySelectorAll(".link")].forEach(path => {
         if (!visibleIds.has(path.dataset.id)) path.remove();
       });
@@ -1897,7 +1912,7 @@ INDEX_HTML = """<!doctype html>
           path = svgEl("path", {"data-id": link.id});
           linkLayer.appendChild(path);
         }
-        path.setAttribute("class", `link ${link.relation || ""}`);
+        path.setAttribute("class", `link ${link.relation || ""} ${Number(link.growingUntil || 0) > now ? "growing" : ""}`);
         path.dataset.source = link.source;
         path.dataset.target = link.target;
         path.setAttribute("d", curvedPath(sourceNode, targetNode));
@@ -1905,6 +1920,7 @@ INDEX_HTML = """<!doctype html>
     }
     function renderNodes(visibleNodes) {
       const visibleIds = new Set(visibleNodes.map(node => node.id));
+      const now = performance.now();
       const pulsing = new Set([...nodeLayer.querySelectorAll(".pulse")].map(el => el.dataset.id));
       [...nodeLayer.querySelectorAll(".node")].forEach(group => {
         if (!visibleIds.has(group.dataset.id)) group.remove();
@@ -1927,7 +1943,12 @@ INDEX_HTML = """<!doctype html>
           });
           nodeLayer.appendChild(group);
         }
-        group.setAttribute("class", `node ${pulsing.has(node.id) ? "pulse" : ""}`);
+        group.setAttribute("class", [
+          "node",
+          pulsing.has(node.id) ? "pulse" : "",
+          Number(node.growingUntil || 0) > now ? "growing" : "",
+          Number(node.badgePulseUntil || 0) > now ? "badge-pulse" : "",
+        ].filter(Boolean).join(" "));
         group.setAttribute("transform", `translate(${node.x},${node.y})`);
         group.innerHTML = "";
         const glow = colorFor(node);

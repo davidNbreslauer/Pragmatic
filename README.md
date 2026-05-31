@@ -235,3 +235,7 @@ Spider silk now has a prepared offline corpus for recorded demos. The realtime a
 ## Milestone 38
 
 The realtime cockpit now pushes SSE events as soon as the producer emits them, requests OpenAI reasoning summaries when the installed Agents SDK supports them, and keeps tool-argument JSON out of the Thinking stream. The Thinking pane now leads with structured thought cards, keeps raw reasoning in a collapsed drawer, and pulses matching belief-graph nodes as cards arrive or are hovered.
+
+## Milestone 39
+
+The belief graph now renders as a thesis-centered hierarchy instead of a free-floating mesh. Assumptions sit as radial spokes with confidence-colored sizing and evidence count badges, evidence leaves stay collapsed by default, relation styles encode support/contradiction/proxy boundaries, and node focus opens a compact detail panel while dimming unrelated context.

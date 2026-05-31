@@ -1169,15 +1169,45 @@ INDEX_HTML = """<!doctype html>
       background-size: auto, auto, 32px 32px, 32px 32px, auto;
     }
     #beliefGraph { width: 100%; height: 100%; display: block; }
-    .link { stroke: rgba(94,230,201,.42); stroke-opacity: .52; stroke-width: 1.25px; }
-    .link.contradicts, .link.proxy_only { stroke: var(--accent-warn); stroke-dasharray: 6 5; stroke-opacity: .72; }
+    .link { fill: none; stroke: rgba(94,230,201,.42); stroke-opacity: .38; stroke-width: 1.3px; transition: opacity .22s ease, stroke .25s ease, d .4s var(--ease); }
+    .link.supports { stroke: var(--accent); }
+    .link.contradicts { stroke: var(--accent-low); stroke-dasharray: 7 5; stroke-opacity: .62; }
+    .link.proxy_only { stroke: var(--accent-mid); stroke-dasharray: 1 6; stroke-linecap: round; stroke-opacity: .72; }
     .link.tests, .link.becomes_eval { stroke: var(--accent-2); }
-    .node { opacity: 0; animation: nodeIn .6s var(--ease) forwards; }
-    .node circle { stroke: rgba(255,255,255,.82); stroke-width: 1.4px; transition: fill .6s var(--ease), filter .6s var(--ease), stroke .6s var(--ease); }
-    .node text { font-size: 10.5px; font-weight: 600; pointer-events: none; fill: rgba(232,237,244,.84); paint-order: stroke; stroke: rgba(7,10,15,.88); stroke-width: 3px; }
-    .node.pulse circle { animation: nodePulse .72s var(--ease); stroke: var(--accent-warn); }
-    .node.highlight circle { stroke: var(--accent); stroke-width: 3px; filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 26px var(--accent)) !important; }
+    .link.dim { opacity: .08; }
+    .link.focus { opacity: .95; stroke-width: 2px; }
+    .node { opacity: 0; cursor: pointer; animation: nodeIn .35s var(--ease) forwards; transition: opacity .22s ease, transform .4s var(--ease); }
+    .node .shape { stroke: rgba(255,255,255,.82); stroke-width: 1.4px; transition: fill .35s ease, filter .35s ease, stroke .25s ease, r .25s ease; }
+    .node text { font-size: 10px; font-weight: 650; pointer-events: none; fill: rgba(232,237,244,.84); paint-order: stroke; stroke: rgba(7,10,15,.88); stroke-width: 3px; }
+    .node .badge { fill: rgba(4,8,12,.88); stroke: rgba(255,255,255,.15); stroke-width: 1px; }
+    .node .badge-text { font: 9px var(--font-mono); fill: var(--text); stroke: none; }
+    .node.dim { opacity: .18; }
+    .node.focus .shape, .node.highlight .shape { stroke: var(--accent); stroke-width: 3px; filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 24px var(--accent)) !important; }
+    .node.pulse .shape { animation: nodePulse .72s var(--ease); stroke: var(--accent-warn); }
     @keyframes nodePulse { 0% { stroke-width: 9px; filter: drop-shadow(0 0 4px var(--accent-warn)) drop-shadow(0 0 30px var(--accent-warn)); } 100% { stroke-width: 1.4px; } }
+    .graph-detail {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      width: min(290px, calc(100% - 24px));
+      max-height: min(42%, 260px);
+      overflow: auto;
+      display: none;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(8,13,20,.82);
+      backdrop-filter: blur(18px) saturate(140%);
+      box-shadow: var(--shadow), 0 0 34px rgba(94,230,201,.08);
+      color: var(--text-muted);
+      font-size: 11px;
+      z-index: 3;
+    }
+    .graph-detail.visible { display: block; animation: tileIn .24s var(--ease) both; }
+    .graph-detail h3 { margin: 0 0 6px; color: var(--text); font-size: 13px; line-height: 1.25; }
+    .graph-detail .meta { color: var(--text-faint); font: 10px var(--font-mono); margin-bottom: 8px; }
+    .graph-detail .claim { border-top: 1px solid rgba(255,255,255,.08); padding-top: 7px; margin-top: 7px; line-height: 1.35; }
+    .graph-detail .pill { display: inline-flex; margin: 2px 4px 2px 0; padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); color: var(--text); font: 10px var(--font-mono); }
     .toast {
       position: absolute;
       left: 14px;
@@ -1366,6 +1396,7 @@ INDEX_HTML = """<!doctype html>
         <div class="pane-head"><h2>Belief Graph</h2><span class="badge" id="graphStatus">0 nodes</span></div>
         <div class="graph-wrap">
           <svg id="beliefGraph"></svg>
+          <div class="graph-detail" id="graphDetail"></div>
           <div class="toast" id="toast"></div>
         </div>
       </section>
@@ -1401,12 +1432,15 @@ INDEX_HTML = """<!doctype html>
     const log = document.getElementById("log");
     const workers = document.getElementById("workers");
     const toast = document.getElementById("toast");
+    const graphDetail = document.getElementById("graphDetail");
     let source = null;
     let pendingText = "";
     let textFrame = null;
     let graphNodes = [];
     let graphLinks = [];
     let nodeById = new Map();
+    let expandedNodes = new Set();
+    let focusedNodeId = null;
     let workerById = new Map();
     let latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
     let thinkingLines = 0;
@@ -1415,6 +1449,9 @@ INDEX_HTML = """<!doctype html>
     const nodeLayer = svgEl("g", {});
     svg.appendChild(linkLayer);
     svg.appendChild(nodeLayer);
+    svg.addEventListener("click", event => {
+      if (event.target === svg) clearGraphFocus();
+    });
     const simulation = {alpha: () => simulation, restart: () => { layoutGraph(); return simulation; }};
     new ResizeObserver(resizeGraph).observe(document.querySelector(".graph-wrap"));
     resizeGraph();
@@ -1436,6 +1473,10 @@ INDEX_HTML = """<!doctype html>
       graphNodes = [];
       graphLinks = [];
       nodeById = new Map();
+      expandedNodes = new Set();
+      focusedNodeId = null;
+      graphDetail.classList.remove("visible");
+      graphDetail.innerHTML = "";
       latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
       updateGraph();
       renderCounters();
@@ -1679,18 +1720,33 @@ INDEX_HTML = """<!doctype html>
     }
     function addGraphNode(meta) {
       if (!meta?.id || nodeById.has(meta.id)) return;
-      const node = {id: meta.id, kind: meta.node_kind || "unknown", label: meta.label || meta.id, confidence: Number(meta.confidence ?? .5)};
+      const node = {
+        id: meta.id,
+        kind: meta.node_kind || "unknown",
+        label: meta.label || meta.id,
+        confidence: Number(meta.confidence ?? .5),
+        previousConfidence: Number(meta.confidence ?? .5),
+      };
       nodeById.set(node.id, node);
       graphNodes.push(node);
       bumpCounter(counterForNode(node.kind));
       updateGraph();
-      document.getElementById("graphStatus").textContent = `${graphNodes.length} nodes`;
+      updateGraphStatus();
     }
     function addGraphEdge(meta) {
       if (!meta?.from || !meta?.to) return;
       if (!nodeById.has(meta.from)) addGraphNode({id: meta.from, node_kind: "unknown", label: meta.from});
       if (!nodeById.has(meta.to)) addGraphNode({id: meta.to, node_kind: "unknown", label: meta.to});
       const id = `${meta.from}->${meta.to}:${meta.relation || "relates"}`;
+      const pair = graphLinks.find(link => link.source === meta.from && link.target === meta.to);
+      if (pair) {
+        if (pair.relation !== (meta.relation || "relates")) {
+          pair.relation = meta.relation || "relates";
+          flashNode(pair.target);
+        }
+        updateGraph();
+        return;
+      }
       if (graphLinks.some(link => link.id === id)) return;
       graphLinks.push({id, source: meta.from, target: meta.to, relation: meta.relation || "relates"});
       if (meta.relation === "contradicts") bumpCounter("conflicts");
@@ -1702,6 +1758,7 @@ INDEX_HTML = """<!doctype html>
       if (!id) return;
       if (!nodeById.has(id)) addGraphNode({id, node_kind: "assumption", label: id, confidence: meta.from || 0});
       const node = nodeById.get(id);
+      node.previousConfidence = Number(meta.from ?? node.confidence);
       node.confidence = Number(meta.to ?? node.confidence);
       updateGraph();
       flashNode(id);
@@ -1716,135 +1773,287 @@ INDEX_HTML = """<!doctype html>
       const height = box.height || 590;
       const centerX = width / 2;
       const centerY = height / 2;
-      const rings = {assumption: Math.min(width, height) * .27, evidence: Math.min(width, height) * .16, source: Math.min(width, height) * .36, question: Math.min(width, height) * .08, test: Math.min(width, height) * .31, eval: Math.min(width, height) * .38, unknown: Math.min(width, height) * .08};
-      const groups = {};
-      graphNodes.forEach(node => {
-        groups[node.kind] = groups[node.kind] || [];
-        groups[node.kind].push(node);
-      });
-      Object.entries(groups).forEach(([kind, nodes]) => positionGroup(kind, nodes, rings[kind] || Math.min(width, height) * .2, centerX, centerY));
-      relaxGraph(width, height, centerX, centerY);
-      renderLinks();
-      renderNodes();
+      const visible = buildHierarchyLayout(width, height, centerX, centerY);
+      renderLinks(visible.links);
+      renderNodes(visible.nodes);
+      applyGraphFocus();
+      updateGraphStatus();
     }
-    function positionGroup(kind, nodes, radius, centerX, centerY) {
-      if (kind === "question") {
-        nodes.forEach((node, index) => {
-          const spread = (index - (nodes.length - 1) / 2) * 42;
-          node.x = centerX + spread;
-          node.y = centerY - radius;
+    function buildHierarchyLayout(width, height, centerX, centerY) {
+      const thesisText = document.getElementById("question")?.value || "Thesis";
+      const assumptions = graphNodes
+        .filter(node => node.kind === "assumption")
+        .sort((a, b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
+      const evidenceByAssumption = evidenceGroupsByAssumption();
+      const assumptionRadius = Math.max(118, Math.min(width, height) * .29);
+      const evidenceRadius = Math.max(52, Math.min(width, height) * .13);
+      const visibleNodes = [
+        {
+          id: "thesis",
+          kind: "thesis",
+          label: thesisText,
+          confidence: meanConfidence(assumptions),
+          x: centerX,
+          y: centerY,
+          relationCounts: countAllEvidence(evidenceByAssumption),
+          visible: true,
+        },
+      ];
+      const visibleLinks = [];
+      assumptions.forEach((node, index) => {
+        const count = Math.max(assumptions.length, 1);
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
+        node.angle = angle;
+        node.x = centerX + Math.cos(angle) * assumptionRadius;
+        node.y = centerY + Math.sin(angle) * assumptionRadius * .82;
+        node.relationCounts = relationCountsFor(node.id, evidenceByAssumption);
+        node.visible = true;
+        visibleNodes.push(node);
+        visibleLinks.push({id: `thesis->${node.id}`, source: "thesis", target: node.id, relation: "supports", synthetic: true});
+        if (!expandedNodes.has(node.id)) return;
+        const leaves = evidenceByAssumption.get(node.id) || [];
+        leaves.forEach((entry, leafIndex) => {
+          const spread = Math.min(Math.PI * .62, Math.max(Math.PI * .18, leaves.length * .13));
+          const leafAngle = angle + (leaves.length === 1 ? 0 : -spread / 2 + (spread * leafIndex) / (leaves.length - 1));
+          const leaf = entry.node;
+          leaf.angle = leafAngle;
+          leaf.x = node.x + Math.cos(leafAngle) * evidenceRadius;
+          leaf.y = node.y + Math.sin(leafAngle) * evidenceRadius * .78;
+          leaf.visible = true;
+          visibleNodes.push(leaf);
+          visibleLinks.push({id: `${leaf.id}->${node.id}:${entry.relation}`, source: leaf.id, target: node.id, relation: entry.relation});
         });
-        return;
-      }
-      nodes.forEach((node, index) => {
-        const angle = (Math.PI * 2 * index / Math.max(nodes.length, 1)) + kindOffset(kind);
-        node.x = centerX + Math.cos(angle) * radius;
-        node.y = centerY + Math.sin(angle) * radius * .7;
+      });
+      return {nodes: visibleNodes, links: visibleLinks};
+    }
+    function evidenceGroupsByAssumption() {
+      const groups = new Map();
+      graphLinks.forEach(link => {
+        const source = nodeById.get(link.source);
+        const target = nodeById.get(link.target);
+        if (!source || !target) return;
+        if (source.kind === "evidence" && target.kind === "assumption") {
+          if (!groups.has(target.id)) groups.set(target.id, []);
+          groups.get(target.id).push({node: source, relation: link.relation || "supports"});
+        }
+      });
+      groups.forEach(entries => entries.sort((a, b) => relationRank(a.relation) - relationRank(b.relation) || a.node.id.localeCompare(b.node.id)));
+      return groups;
+    }
+    function relationRank(relation) {
+      return {contradicts: 0, proxy_only: 1, supports: 2}[relation] ?? 3;
+    }
+    function relationCountsFor(id, evidenceByAssumption = evidenceGroupsByAssumption()) {
+      const counts = {supports: 0, contradicts: 0, proxy_only: 0};
+      (evidenceByAssumption.get(id) || []).forEach(entry => {
+        counts[entry.relation] = (counts[entry.relation] || 0) + 1;
+      });
+      return counts;
+    }
+    function countAllEvidence(evidenceByAssumption) {
+      const counts = {supports: 0, contradicts: 0, proxy_only: 0};
+      evidenceByAssumption.forEach(entries => entries.forEach(entry => {
+        counts[entry.relation] = (counts[entry.relation] || 0) + 1;
+      }));
+      return counts;
+    }
+    function meanConfidence(nodes) {
+      if (!nodes.length) return .5;
+      return nodes.reduce((sum, node) => sum + Number(node.confidence || 0), 0) / nodes.length;
+    }
+    function renderLinks(visibleLinks) {
+      const visibleIds = new Set(visibleLinks.map(link => link.id));
+      [...linkLayer.querySelectorAll(".link")].forEach(path => {
+        if (!visibleIds.has(path.dataset.id)) path.remove();
+      });
+      visibleLinks.forEach(link => {
+        const sourceNode = visibleNodeById(link.source);
+        const targetNode = visibleNodeById(link.target);
+        if (!sourceNode || !targetNode) return;
+        let path = linkLayer.querySelector(`[data-id="${cssEscape(link.id)}"]`);
+        if (!path) {
+          path = svgEl("path", {"data-id": link.id});
+          linkLayer.appendChild(path);
+        }
+        path.setAttribute("class", `link ${link.relation || ""}`);
+        path.dataset.source = link.source;
+        path.dataset.target = link.target;
+        path.setAttribute("d", curvedPath(sourceNode, targetNode));
       });
     }
-    function relaxGraph(width, height, centerX, centerY) {
-      const margin = 24;
-      for (let pass = 0; pass < 60; pass++) {
-        graphNodes.forEach(node => {
-          node.x += (centerX - node.x) * .005;
-          node.y += (centerY - node.y) * .005;
-        });
-        graphLinks.forEach(link => {
-          const a = nodeById.get(link.source);
-          const b = nodeById.get(link.target);
-          if (!a || !b) return;
-          const dx = b.x - a.x || .1;
-          const dy = b.y - a.y || .1;
-          const dist = Math.hypot(dx, dy);
-          const target = (a.kind === "question" || b.kind === "question") ? 50 : 120;
-          const shift = (dist - target) * .035;
-          const ux = dx / dist;
-          const uy = dy / dist;
-          a.x += ux * shift;
-          a.y += uy * shift;
-          b.x -= ux * shift;
-          b.y -= uy * shift;
-        });
-        for (let i = 0; i < graphNodes.length; i++) {
-          for (let j = i + 1; j < graphNodes.length; j++) {
-            const a = graphNodes[i];
-            const b = graphNodes[j];
-            const dx = b.x - a.x || .1;
-            const dy = b.y - a.y || .1;
-            const dist = Math.hypot(dx, dy);
-            const min = radiusFor(a) + radiusFor(b) + 18;
-            if (dist < min) {
-              const push = (min - dist) / 2;
-              const ux = dx / dist;
-              const uy = dy / dist;
-              a.x -= ux * push;
-              a.y -= uy * push;
-              b.x += ux * push;
-              b.y += uy * push;
+    function renderNodes(visibleNodes) {
+      const visibleIds = new Set(visibleNodes.map(node => node.id));
+      const pulsing = new Set([...nodeLayer.querySelectorAll(".pulse")].map(el => el.dataset.id));
+      [...nodeLayer.querySelectorAll(".node")].forEach(group => {
+        if (!visibleIds.has(group.dataset.id)) group.remove();
+      });
+      visibleNodes.forEach(node => {
+        let group = nodeLayer.querySelector(`[data-id="${cssEscape(node.id)}"]`);
+        if (!group) {
+          group = svgEl("g", {"data-id": node.id});
+          group.addEventListener("mouseenter", () => focusGraphNode(node.id, false));
+          group.addEventListener("mouseleave", () => {
+            if (!focusedNodeId) clearGraphFocus();
+          });
+          group.addEventListener("click", event => {
+            event.stopPropagation();
+            if (node.kind === "assumption") {
+              expandedNodes.has(node.id) ? expandedNodes.delete(node.id) : expandedNodes.add(node.id);
             }
+            focusGraphNode(node.id, true);
+            updateGraph();
+          });
+          nodeLayer.appendChild(group);
+        }
+        group.setAttribute("class", `node ${pulsing.has(node.id) ? "pulse" : ""}`);
+        group.setAttribute("transform", `translate(${node.x},${node.y})`);
+        group.innerHTML = "";
+        const glow = colorFor(node);
+        const r = radiusFor(node);
+        if (node.kind === "evidence") {
+          group.appendChild(svgEl("rect", {
+            class: "shape",
+            x: -r * .72,
+            y: -r * .72,
+            width: r * 1.44,
+            height: r * 1.44,
+            transform: "rotate(45)",
+            rx: 2,
+            fill: glow,
+            style: `filter: drop-shadow(0 0 6px ${glow}) drop-shadow(0 0 16px ${glow}55);`,
+          }));
+        } else {
+          group.appendChild(svgEl("circle", {
+            class: "shape",
+            r,
+            fill: node.kind === "thesis" ? "rgba(4,8,12,.92)" : glow,
+            style: `filter: drop-shadow(0 0 7px ${glow}) drop-shadow(0 0 ${node.kind === "thesis" ? 28 : 20}px ${glow}55);`,
+          }));
+          if (node.kind === "thesis") {
+            group.appendChild(svgEl("circle", {r: r + 5, fill: "none", stroke: glow, "stroke-width": 1.8, opacity: .8}));
           }
         }
-        graphNodes.forEach(node => {
-          node.x = Math.max(margin, Math.min(width - margin, node.x));
-          node.y = Math.max(margin, Math.min(height - margin - 18, node.y));
-        });
-      }
-    }
-    function kindOffset(kind) {
-      return {assumption: -.2, evidence: .5, source: 1.1, question: -1.55, test: 2.1, eval: 2.8, unknown: 0}[kind] || 0;
-    }
-    function renderLinks() {
-      linkLayer.innerHTML = "";
-      graphLinks.forEach(link => {
-        const sourceNode = typeof link.source === "string" ? nodeById.get(link.source) : link.source;
-        const targetNode = typeof link.target === "string" ? nodeById.get(link.target) : link.target;
-        if (!sourceNode || !targetNode) return;
-        const line = svgEl("line", {
-          class: `link ${link.relation || ""}`,
-          x1: sourceNode.x,
-          y1: sourceNode.y,
-          x2: targetNode.x,
-          y2: targetNode.y,
-        });
-        linkLayer.appendChild(line);
-      });
-    }
-    function renderNodes() {
-      const pulsing = new Set([...nodeLayer.querySelectorAll(".pulse")].map(el => el.dataset.id));
-      nodeLayer.innerHTML = "";
-      graphNodes.forEach(node => {
-        const group = svgEl("g", {class: `node ${pulsing.has(node.id) ? "pulse" : ""}`, "data-id": node.id, transform: `translate(${node.x},${node.y})`});
-        const glow = colorFor(node);
-        group.appendChild(svgEl("circle", {
-          r: radiusFor(node),
-          fill: glow,
-          style: `filter: drop-shadow(0 0 7px ${glow}) drop-shadow(0 0 22px ${glow}55);`
-        }));
         const title = svgEl("title", {});
-        title.textContent = node.label;
+        title.textContent = node.label || node.id;
         group.appendChild(title);
-        const text = svgEl("text", {y: radiusFor(node) + 12, "text-anchor": "middle"});
+        if (node.kind === "assumption") renderEvidenceBadge(group, node, r);
+        const labelOffset = labelOffsetFor(node);
+        const text = svgEl("text", {x: labelOffset.x, y: labelOffset.y, "text-anchor": labelOffset.anchor});
         text.textContent = shortLabel(node.label);
         group.appendChild(text);
-        nodeLayer.appendChild(group);
       });
     }
+    function visibleNodeById(id) {
+      if (id === "thesis") {
+        const box = document.querySelector(".graph-wrap").getBoundingClientRect();
+        return {id: "thesis", x: (box.width || 720) / 2, y: (box.height || 590) / 2};
+      }
+      return nodeById.get(id);
+    }
+    function curvedPath(source, target) {
+      const mx = (source.x + target.x) / 2;
+      const my = (source.y + target.y) / 2;
+      const cx = mx + (target.y - source.y) * .08;
+      const cy = my - (target.x - source.x) * .08;
+      return `M ${source.x.toFixed(1)} ${source.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${target.x.toFixed(1)} ${target.y.toFixed(1)}`;
+    }
+    function renderEvidenceBadge(group, node, r) {
+      const counts = node.relationCounts || relationCountsFor(node.id);
+      const up = counts.supports || 0;
+      const down = (counts.contradicts || 0) + (counts.proxy_only || 0);
+      if (!up && !down) return;
+      const text = `▲${up} ▼${down}`;
+      const width = Math.max(34, text.length * 6 + 10);
+      group.appendChild(svgEl("rect", {class: "badge", x: -width / 2, y: -r - 21, width, height: 16, rx: 8}));
+      const badgeText = svgEl("text", {class: "badge-text", y: -r - 9, "text-anchor": "middle"});
+      badgeText.textContent = text;
+      group.appendChild(badgeText);
+    }
+    function focusGraphNode(id, persist) {
+      focusedNodeId = persist ? id : focusedNodeId;
+      showGraphDetail(id);
+      applyGraphFocus(id);
+    }
+    function clearGraphFocus() {
+      focusedNodeId = null;
+      graphDetail.classList.remove("visible");
+      applyGraphFocus();
+    }
+    function applyGraphFocus(hoverId = null) {
+      const id = hoverId || focusedNodeId;
+      const neighbors = id ? directNeighbors(id) : new Set();
+      nodeLayer.querySelectorAll(".node").forEach(group => {
+        const active = !id || group.dataset.id === id || neighbors.has(group.dataset.id);
+        group.classList.toggle("dim", !active);
+        group.classList.toggle("focus", group.dataset.id === id);
+      });
+      linkLayer.querySelectorAll(".link").forEach(path => {
+        const active = !id || path.dataset.source === id || path.dataset.target === id;
+        path.classList.toggle("dim", !active);
+        path.classList.toggle("focus", active && !!id);
+      });
+    }
+    function directNeighbors(id) {
+      const neighbors = new Set();
+      if (id === "thesis") {
+        graphNodes.filter(node => node.kind === "assumption").forEach(node => neighbors.add(node.id));
+        return neighbors;
+      }
+      graphLinks.forEach(link => {
+        if (link.source === id) neighbors.add(link.target);
+        if (link.target === id) neighbors.add(link.source);
+      });
+      if (nodeById.get(id)?.kind === "assumption") neighbors.add("thesis");
+      return neighbors;
+    }
+    function showGraphDetail(id) {
+      const node = id === "thesis" ? {
+        id: "thesis",
+        kind: "thesis",
+        label: document.getElementById("question")?.value || "Thesis",
+        confidence: meanConfidence(graphNodes.filter(n => n.kind === "assumption")),
+      } : nodeById.get(id);
+      if (!node) return;
+      const evidence = node.kind === "assumption" ? evidenceGroupsByAssumption().get(node.id) || [] : [];
+      const counts = node.kind === "assumption" ? relationCountsFor(node.id) : null;
+      graphDetail.innerHTML = `
+        <h3>${escapeHtml(node.label || node.id)}</h3>
+        <div class="meta">${escapeHtml(titleCase(node.kind))} · confidence ${formatConfidence(node.confidence)}</div>
+        ${counts ? `<div><span class="pill">supports ${counts.supports || 0}</span><span class="pill">contradicts ${counts.contradicts || 0}</span><span class="pill">proxy ${counts.proxy_only || 0}</span></div>` : ""}
+        ${evidence.slice(0, 7).map(entry => `<div class="claim"><span class="pill">${escapeHtml(entry.relation)}</span>${escapeHtml(entry.node.label || entry.node.id)}</div>`).join("")}
+      `;
+      graphDetail.classList.add("visible");
+    }
     function radiusFor(d) {
-      return {assumption: 14, question: 9, evidence: 11, source: 10, test: 12, eval: 12, unknown: 9}[d.kind] || 10;
+      if (d.kind === "thesis") return 21;
+      if (d.kind === "assumption") {
+        const counts = d.relationCounts || relationCountsFor(d.id);
+        const evidenceCount = (counts.supports || 0) + (counts.contradicts || 0) + (counts.proxy_only || 0);
+        return Math.min(24, 13 + evidenceCount * 1.1);
+      }
+      return {evidence: 7, source: 9, test: 10, eval: 10, unknown: 8}[d.kind] || 8;
     }
     function colorFor(d) {
-      if (d.kind === "source") return "#60744d";
-      if (d.kind === "evidence") return "#6AA8FF";
-      if (d.kind === "test") return "#A9B8FF";
-      if (d.kind === "eval") return "#B89CFF";
-      if (d.kind === "question") return "#8A95A6";
       if (d.confidence >= .66) return "#5EE6C9";
       if (d.confidence >= .34) return "#F4C152";
       return "#FF5C7A";
     }
+    function labelOffsetFor(node) {
+      if (node.kind === "thesis") return {x: 0, y: 38, anchor: "middle"};
+      const angle = node.angle ?? 0;
+      const outward = Math.cos(angle) >= 0;
+      const x = Math.cos(angle) * (radiusFor(node) + 8);
+      const y = Math.sin(angle) * (radiusFor(node) + 8) + 4;
+      return {x, y, anchor: outward ? "start" : "end"};
+    }
     function shortLabel(value) {
       const text = String(value || "");
-      return text.length > 22 ? `${text.slice(0, 21)}…` : text;
+      return text.length > 26 ? `${text.slice(0, 25)}…` : text;
+    }
+    function updateGraphStatus() {
+      const assumptionCount = graphNodes.filter(node => node.kind === "assumption").length;
+      const evidenceCount = graphNodes.filter(node => node.kind === "evidence").length;
+      document.getElementById("graphStatus").textContent = `${assumptionCount} assumptions · ${evidenceCount} evidence`;
     }
     function svgEl(name, attrs) {
       const el = document.createElementNS("http://www.w3.org/2000/svg", name);

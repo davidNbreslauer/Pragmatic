@@ -1090,9 +1090,13 @@ INDEX_HTML = """<!doctype html>
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      white-space: normal;
       color: var(--text);
       font-weight: 650;
+      line-height: 1.2;
     }
     .thought-card .sub {
       margin-top: 2px;
@@ -1628,7 +1632,7 @@ INDEX_HTML = """<!doctype html>
       if (kind === "node.add") {
         return {
           icon: "+",
-          label: `${titleCase(meta.node_kind || "node")}: ${shortLabel(meta.label || meta.id)}`,
+          label: `${titleCase(meta.node_kind || "node")}: ${thoughtLabel(meta.label || meta.id)}`,
           sub: meta.id || "",
           nodeId: meta.id,
         };
@@ -2049,6 +2053,10 @@ INDEX_HTML = """<!doctype html>
     function shortLabel(value) {
       const text = String(value || "");
       return text.length > 26 ? `${text.slice(0, 25)}…` : text;
+    }
+    function thoughtLabel(value) {
+      const text = String(value || "").replace(/\\s+/g, " ").trim();
+      return text.length > 88 ? `${text.slice(0, 87)}…` : text;
     }
     function updateGraphStatus() {
       const assumptionCount = graphNodes.filter(node => node.kind === "assumption").length;

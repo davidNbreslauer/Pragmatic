@@ -1155,7 +1155,7 @@ INDEX_HTML = """<!doctype html>
       <section class="ask header-grid">
         <div class="identity-row">
           <div class="brand-block">
-            <div class="brand">Pragmatic AI</div>
+            <div class="brand">Pragmatic AI: Do diligence.</div>
             <div class="tagline">Sourced evidence, confidence updates, next decisive test.</div>
           </div>
           <div class="chips">

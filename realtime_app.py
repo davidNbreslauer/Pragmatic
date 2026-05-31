@@ -826,7 +826,7 @@ INDEX_HTML = """<!doctype html>
       margin: 0 auto;
       padding: 12px 18px 14px;
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto auto 1fr;
       gap: 12px;
       overflow: visible;
     }

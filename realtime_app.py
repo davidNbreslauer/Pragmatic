@@ -1252,7 +1252,8 @@ INDEX_HTML = """<!doctype html>
       opacity: 0;
     }
     .toast.visible { display: block; animation: toastIn .6s var(--ease) forwards; }
-    .workers { flex: 0 0 34%; min-height: 100px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-content: start; }
+    .workers { display: none; }
+    .workers:not(:empty) { flex: 0 0 34%; min-height: 100px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-content: start; }
     .worker {
       border: 1px solid var(--line);
       border-radius: 12px;

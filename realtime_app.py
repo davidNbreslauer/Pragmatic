@@ -42,7 +42,13 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _new_job(thesis_text: str, config: dict[str, Any]) -> str:
+def _new_job(
+    thesis_text: str,
+    config: dict[str, Any],
+    *,
+    event_loop: asyncio.AbstractEventLoop | None = None,
+    event_signal: asyncio.Event | None = None,
+) -> str:
     job_id = f"run_{uuid.uuid4().hex[:12]}"
     with RUN_LOCK:
         RUNS[job_id] = {
@@ -54,10 +60,19 @@ def _new_job(thesis_text: str, config: dict[str, Any]) -> str:
             "config": config,
             "events": [],
             "next_event_index": 1,
+            "event_loop": event_loop,
+            "event_signal": event_signal,
             "result": None,
             "error": None,
         }
     return job_id
+
+
+def _signal_job_unlocked(job: dict[str, Any]) -> None:
+    loop = job.get("event_loop")
+    signal = job.get("event_signal")
+    if loop is not None and signal is not None:
+        loop.call_soon_threadsafe(signal.set)
 
 
 def _append_event(job_id: str, event: dict[str, Any]) -> None:
@@ -80,6 +95,7 @@ def _append_event(job_id: str, event: dict[str, Any]) -> None:
         if len(job["events"]) > MAX_STORED_EVENTS_PER_JOB:
             job["events"] = job["events"][-MAX_STORED_EVENTS_PER_JOB:]
         job["updated_at"] = normalized["created_at"]
+        _signal_job_unlocked(job)
 
 
 def _set_job_status(
@@ -97,6 +113,7 @@ def _set_job_status(
             job["result"] = result
         if error is not None:
             job["error"] = error
+        _signal_job_unlocked(job)
 
 
 async def index(_request: Request) -> HTMLResponse:
@@ -107,7 +124,12 @@ async def start_run(request: Request) -> JSONResponse:
     payload = await request.json()
     thesis_text = str(payload.get("thesis_text") or DEFAULT_THESIS).strip() or DEFAULT_THESIS
     config = _normalize_config(payload.get("config") or {})
-    job_id = _new_job(thesis_text, config)
+    job_id = _new_job(
+        thesis_text,
+        config,
+        event_loop=asyncio.get_running_loop(),
+        event_signal=asyncio.Event(),
+    )
     thread = threading.Thread(
         target=_run_job,
         args=(job_id, thesis_text, config),
@@ -138,6 +160,15 @@ async def run_events(request: Request) -> StreamingResponse:
                 if job is None:
                     yield _sse("error", {"error": "run not found"})
                     return
+                event_signal = job.get("event_signal")
+            if event_signal is not None:
+                event_signal.clear()
+
+            with RUN_LOCK:
+                job = RUNS.get(job_id)
+                if job is None:
+                    yield _sse("error", {"error": "run not found"})
+                    return
                 events = list(job["events"])
                 status = job["status"]
                 result = job["result"]
@@ -160,7 +191,13 @@ async def run_events(request: Request) -> StreamingResponse:
                 return
             if await request.is_disconnected():
                 return
-            await asyncio.sleep(0.25)
+            if event_signal is None:
+                await asyncio.sleep(0.25)
+                continue
+            try:
+                await asyncio.wait_for(event_signal.wait(), timeout=15)
+            except TimeoutError:
+                pass
 
     return StreamingResponse(
         event_stream(),

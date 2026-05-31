@@ -1618,8 +1618,8 @@ INDEX_HTML = """<!doctype html>
       div.innerHTML = `
         <span class="icon">${escapeHtml(card.icon)}</span>
         <div>
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="sub">${escapeHtml(card.sub || "")}</div>
+          <div class="label" title="${escapeHtml(card.label)}">${escapeHtml(card.label)}</div>
+          <div class="sub" title="${escapeHtml(card.sub || "")}">${escapeHtml(card.sub || "")}</div>
         </div>
         <span class="status-dot"></span>
       `;
@@ -1981,7 +1981,7 @@ INDEX_HTML = """<!doctype html>
         group.appendChild(title);
         if (node.kind === "assumption") renderEvidenceBadge(group, node, r);
         const labelOffset = labelOffsetFor(node);
-        const text = svgEl("text", {x: labelOffset.x, y: labelOffset.y, "text-anchor": labelOffset.anchor});
+        const text = svgEl("text", {x: labelOffset.x, y: labelOffset.y, "text-anchor": labelOffset.anchor, title: node.label || node.id});
         text.textContent = shortLabel(node.label);
         group.appendChild(text);
       });

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from pragmatic.doctor import run_integration_doctor
+from pragmatic.corpus import SPIDER_SILK_CORPUS_PATH
 from pragmatic.eval_suite import run_eval_suite
 from pragmatic.replay import run_replay_demo
 from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
@@ -66,6 +67,24 @@ def demo_scenarios() -> list[DemoScenario]:
                 "Cross-check/verifier task surfaces",
             ],
             notes="Use after the Integration Doctor shows Modal is live.",
+        ),
+        DemoScenario(
+            id="spider_silk_prepared",
+            name="Spider Silk Prepared Corpus",
+            thesis="Spider silk for bullet proof vests",
+            orchestration="scripted_sdk",
+            execution_backend="local",
+            observability_backend="local",
+            source_mode="prepared",
+            corpus_path=str(SPIDER_SILK_CORPUS_PATH),
+            allow_live_web_search=False,
+            proves=[
+                "Offline prepared-corpus source acquisition",
+                "Tensile-toughness proxy boundary",
+                "Invalid analogy to generated eval",
+                "Standards-relevant ballistic decisive test",
+            ],
+            notes="Use for recorded demos when live web search should be disabled.",
         ),
         DemoScenario(
             id="failure_replay",

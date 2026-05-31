@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from pragmatic.belief_update import apply_belief_updates, update_beliefs
-from pragmatic.corpus import load_corpus, rank_sources_for_questions
+from pragmatic.corpus import load_corpus, rank_sources_for_questions, resolve_corpus_path
 from pragmatic.decisive_tests import propose_decisive_tests
 from pragmatic.eval_writer import generate_evals_from_failures
 from pragmatic.eval_workshop import build_eval_workshop
@@ -105,12 +105,13 @@ def run_research_loop(
             },
         )
     else:
-        corpus = load_corpus(corpus_path)
+        resolved_corpus_path = resolve_corpus_path(thesis_text, corpus_path)
+        corpus = load_corpus(resolved_corpus_path)
         _trace(
             state,
             "source_acquisition",
             f"Loaded {len(corpus)} prepared-corpus sources.",
-            metadata={"source_mode": source_mode},
+            metadata={"source_mode": source_mode, "corpus_path": str(resolved_corpus_path)},
         )
 
     for iteration in range(1, max_iterations + 1):

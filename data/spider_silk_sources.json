@@ -1,0 +1,90 @@
+[
+  {
+    "id": "spider_001",
+    "title": "Dragline Spider Silk Tensile Strength And Toughness Review",
+    "source_type": "review",
+    "url": "https://example.com/spider-silk-toughness-review",
+    "citation": "Prepared demo review, 2026",
+    "published_year": 2026,
+    "tags": ["spider-silk", "dragline", "tensile-strength", "toughness", "kevlar", "bullet-proof-vest"],
+    "evidence_scope": "material-property support, not ballistic vest validation",
+    "text": "Natural dragline spider silk is repeatedly reported as combining high tensile strength with exceptional toughness, meaning large energy-to-break per unit mass. Reviews often compare the fiber favorably with aramid fibers such as Kevlar on specific quasi-static tensile properties. This supports the premise that spider silk is a lightweight, tough fiber, but the snippet does not establish ballistic stopping power in a vest panel."
+  },
+  {
+    "id": "spider_002",
+    "title": "Recombinant Spider Silk Fibers Approach Natural Silk Properties",
+    "source_type": "paper",
+    "url": "https://example.com/recombinant-spider-silk-fibers",
+    "citation": "Prepared fiber study, 2024",
+    "published_year": 2024,
+    "tags": ["recombinant-spider-silk", "fiber-spinning", "tensile-toughness", "manufacturing", "vest"],
+    "evidence_scope": "lab fiber tensile data",
+    "text": "A recombinant spider-silk spinning study reports fibers with improved strength and toughness compared with earlier synthetic attempts, and some specimens approach natural dragline behavior. The measurements are tensile tests on fibers made under laboratory conditions. They are relevant to whether silk can be made, but they do not test woven armor, high-strain-rate impact, areal density, or back-face deformation."
+  },
+  {
+    "id": "spider_003",
+    "title": "Why Tougher Than Kevlar Is A Proxy Claim",
+    "source_type": "blog_post",
+    "url": "https://example.com/tougher-than-kevlar-proxy",
+    "citation": "Prepared armor evidence note, 2026",
+    "published_year": 2026,
+    "tags": ["kevlar", "proxy-evidence", "quasi-static", "ballistic", "spider-silk", "invalid-analogy"],
+    "evidence_scope": "proxy-property boundary",
+    "text": "The phrase tougher than Kevlar by weight usually refers to quasi-static fiber toughness or energy-to-break, not the ability of a textile stack to stop bullets. Ballistic armor depends on high-strain-rate energy dissipation, yarn pull-out, friction, weave architecture, areal density, and acceptable trauma depth. Treating the tensile comparison as direct vest evidence is an invalid analogy."
+  },
+  {
+    "id": "spider_004",
+    "title": "Ballistic Armor Performance Requires High Rate Panel Tests",
+    "source_type": "paper",
+    "url": "https://example.com/high-rate-ballistic-panel-tests",
+    "citation": "Prepared ballistic materials review, 2025",
+    "published_year": 2025,
+    "tags": ["ballistic", "high-strain-rate", "energy-dissipation", "areal-density", "back-face-deformation", "vest"],
+    "evidence_scope": "application-level limitation",
+    "text": "Ballistic panels are judged by projectile defeat and by the deformation transmitted to the wearer. Tensile strength and toughness alone cannot predict this behavior because impacts occur at high strain rates and involve layered textile mechanics. A fiber that is excellent in slow pull tests can still fail to absorb projectile energy at a practical areal density."
+  },
+  {
+    "id": "spider_005",
+    "title": "Synthetic Spider Silk Scale-Up Remains A Barrier",
+    "source_type": "review",
+    "url": "https://example.com/spider-silk-scale-up-barrier",
+    "citation": "Prepared biomanufacturing review, 2025",
+    "published_year": 2025,
+    "tags": ["scale-up", "recombinant-spider-silk", "manufacturing", "gram-scale", "vest-panels"],
+    "evidence_scope": "manufacturing limitation",
+    "text": "Synthetic spider silk can be produced through recombinant expression and wet spinning, but many reports remain at gram or pilot scale and processing can reduce fiber performance. A vest would require consistent yarn, textile processing, quality control, and square meters of panel material. This source is limiting evidence for claims that lab fibers are already manufacturable into armor."
+  },
+  {
+    "id": "spider_006",
+    "title": "NIJ 0101.06 Body Armor Standard Context",
+    "source_type": "standard",
+    "url": "https://nij.ojp.gov/",
+    "citation": "National Institute of Justice, 0101.06",
+    "published_year": 2008,
+    "tags": ["NIJ-0101.06", "Level-IIIA", "ballistic-standard", "V50", "bullet-proof-vest", "testing"],
+    "evidence_scope": "standards-relevant success criteria",
+    "text": "NIJ 0101.06 rates ballistic-resistant body armor using specified projectiles, velocities, conditioning, shot placement, penetration limits, and back-face deformation limits. Related V50 testing estimates the velocity at which a projectile has a fifty percent chance of perforation. Any spider-silk vest claim must be tested as a panel against this kind of ballistic standard."
+  },
+  {
+    "id": "spider_007",
+    "title": "No Fielded Spider Silk Ballistic Vest Evidence",
+    "source_type": "review",
+    "url": "https://example.com/no-fielded-spider-silk-armor",
+    "citation": "Prepared procurement scan, 2026",
+    "published_year": 2026,
+    "tags": ["fielded-vest", "independent-validation", "spider-silk", "armor", "limitation"],
+    "evidence_scope": "absence of independent application validation",
+    "text": "The prepared evidence set finds no evidence of a fielded ballistic vest whose protective rating depends on spider silk and no independent NIJ Level IIIA or V50 panel result for a spider-silk armor package. Spider silk remains promising as a high-performance fiber, but application-level body-armor evidence is absent in this corpus."
+  },
+  {
+    "id": "spider_008",
+    "title": "Aramid Controls Remain The Relevant Comparison",
+    "source_type": "case_study",
+    "url": "https://example.com/aramid-control-comparison",
+    "citation": "Prepared armor comparison case, 2025",
+    "published_year": 2025,
+    "tags": ["aramid", "kevlar", "control", "areal-density", "ballistic-panel", "spider-silk"],
+    "evidence_scope": "comparison and decisive-test design",
+    "text": "A fair spider-silk armor test would compare a silk-containing panel with an aramid control at fixed areal density and similar panel construction, then measure perforation, V50, and back-face deformation. Without that head-to-head panel test, the claim that spider silk can replace Kevlar in bullet proof vests remains promising but indirect."
+  }
+]

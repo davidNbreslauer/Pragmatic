@@ -227,3 +227,7 @@ The realtime cockpit now uses an Obsidian Observatory visual system: dark glass 
 ## Milestone 36
 
 Completed realtime runs now open with a Bottom Line verdict built from the final `ResearchState`: verdict, confidence band, one-sentence takeaway, key reasons, biggest risk, decisive next test, and compact run stats. Deterministic and offline runs always get the template verdict, while live/scripted OpenAI runs may softly polish only the one-liner with a short timeout and safe fallback.
+
+## Milestone 37
+
+Spider silk now has a prepared offline corpus for recorded demos. The realtime app can auto-route "Spider silk for bullet proof vests" to `data/spider_silk_sources.json`, or select the spider-silk or AI-scientist corpus explicitly, while keeping live web search disabled for prepared runs. The corpus is tuned to show the tensile-toughness proxy boundary, contradictory ballistic/manufacturing limits, a generated eval from the invalid analogy, and an NIJ Level IIIA / V50 decisive test against an aramid control.

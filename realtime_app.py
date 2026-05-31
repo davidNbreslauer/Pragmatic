@@ -18,6 +18,7 @@ from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from pragmatic import ResearchManager
+from pragmatic.corpus import AI_SCIENTIST_CORPUS_PATH, SPIDER_SILK_CORPUS_PATH
 from pragmatic.live_harness import run_live_harness_sync
 from pragmatic.replay import run_replay_demo
 from pragmatic.schemas import LiveRunResult, ResearchState
@@ -195,6 +196,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
             replay = run_replay_demo(
                 thesis_text,
                 max_iterations=config["max_iterations"],
+                corpus_path=config["corpus_path"] or None,
                 execution_backend=config["execution_backend"],
                 observability_mode=config["observability_mode"],
             )
@@ -210,6 +212,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
                 max_iterations=config["max_iterations"],
                 execution_backend=config["execution_backend"],
                 source_mode=config["source_mode"],
+                corpus_path=config["corpus_path"] or None,
                 allow_live_web_search=config["allow_live_web_search"],
                 web_search_model=config["web_search_model"] or config["model"] or None,
                 max_web_sources=config["max_web_sources"],
@@ -234,6 +237,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
                     thesis_text,
                     max_iterations=config["max_iterations"],
                     execution_backend=config["execution_backend"],
+                    corpus_path=config["corpus_path"] or None,
                     source_mode=fallback_source_mode,
                     allow_live_web_search=(
                         config["allow_live_web_search"] and fallback_source_mode == "web"
@@ -256,6 +260,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
                 thesis_text,
                 max_iterations=config["max_iterations"],
                 execution_backend=config["execution_backend"],
+                corpus_path=config["corpus_path"] or None,
                 source_mode=config["source_mode"],
                 allow_live_web_search=config["allow_live_web_search"],
                 web_search_model=config["web_search_model"] or config["model"] or None,
@@ -276,6 +281,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
                 thesis_text,
                 max_iterations=config["max_iterations"],
                 execution_backend=config["execution_backend"],
+                corpus_path=config["corpus_path"] or None,
                 source_mode=config["source_mode"],
                 allow_live_web_search=config["allow_live_web_search"],
                 web_search_model=config["web_search_model"] or None,
@@ -409,11 +415,19 @@ def _append_state_cockpit_events(job_id: str, state: ResearchState) -> None:
 
 
 def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
+    corpus_choice = str(raw.get("corpus_choice") or "auto")
+    corpus_path = ""
+    if corpus_choice == "spider_silk":
+        corpus_path = str(SPIDER_SILK_CORPUS_PATH)
+    elif corpus_choice == "ai_scientist":
+        corpus_path = str(AI_SCIENTIST_CORPUS_PATH)
     return {
         "orchestration": str(raw.get("orchestration") or "live_sdk"),
         "execution_backend": str(raw.get("execution_backend") or "modal"),
         "observability_mode": str(raw.get("observability_mode") or "local"),
         "source_mode": str(raw.get("source_mode") or "web"),
+        "corpus_choice": corpus_choice,
+        "corpus_path": corpus_path,
         "allow_live_web_search": bool(raw.get("allow_live_web_search", True)),
         "live_sdk_enabled": bool(raw.get("live_sdk_enabled", True)),
         "live_dry_run": bool(raw.get("live_dry_run", False)),
@@ -1183,6 +1197,7 @@ INDEX_HTML = """<!doctype html>
             <label>Orchestration<select id="orchestration"><option value="live_sdk">live_sdk</option><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option></select></label>
             <label>Execution<select id="execution_backend"><option value="modal">modal</option><option value="local">local</option></select></label>
             <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
+            <label>Corpus<select id="corpus_choice"><option value="auto">auto</option><option value="spider_silk">Spider silk (prepared)</option><option value="ai_scientist">AI scientist (prepared)</option></select></label>
             <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
             <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
             <label>Max turns<input id="max_turns" type="number" value="3" min="1" max="20" /></label>
@@ -1731,6 +1746,7 @@ INDEX_HTML = """<!doctype html>
           orchestration: document.getElementById("orchestration").value,
           execution_backend: document.getElementById("execution_backend").value,
           source_mode: document.getElementById("source_mode").value,
+          corpus_choice: document.getElementById("corpus_choice").value,
           model: document.getElementById("model").value,
           web_search_model: document.getElementById("model").value,
           timeout_seconds: Number(document.getElementById("timeout_seconds").value),

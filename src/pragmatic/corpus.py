@@ -7,7 +7,10 @@ from pathlib import Path
 from pragmatic.schemas import ResearchQuestion, RetrievalScore, Source
 
 
-DEFAULT_CORPUS_PATH = Path(__file__).resolve().parents[2] / "data" / "ai_scientist_sources.json"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+DEFAULT_CORPUS_PATH = DATA_DIR / "ai_scientist_sources.json"
+AI_SCIENTIST_CORPUS_PATH = DEFAULT_CORPUS_PATH
+SPIDER_SILK_CORPUS_PATH = DATA_DIR / "spider_silk_sources.json"
 STOPWORDS = {
     "a",
     "against",
@@ -40,6 +43,18 @@ def load_corpus(path: str | Path | None = None) -> list[Source]:
     with corpus_path.open("r", encoding="utf-8") as handle:
         raw_sources = json.load(handle)
     return [Source.model_validate(source) for source in raw_sources]
+
+
+def resolve_corpus_path(thesis_text: str, corpus_path: str | Path | None = None) -> Path:
+    if corpus_path is not None:
+        return Path(corpus_path)
+
+    thesis = thesis_text.lower()
+    if any(term in thesis for term in ["spider", "silk", "bullet", "vest"]):
+        return SPIDER_SILK_CORPUS_PATH
+    if any(term in thesis for term in ["ai", "scientist", "materials"]):
+        return AI_SCIENTIST_CORPUS_PATH
+    return DEFAULT_CORPUS_PATH
 
 
 def score_corpus_for_questions(

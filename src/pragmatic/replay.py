@@ -45,7 +45,7 @@ def run_replay_demo(
         observability_mode="off",
     )
     first_pass = simulate_overcredited_first_pass(first_pass_base)
-    applied_eval_rules = _benchmark_eval_rules(first_pass)
+    applied_eval_rules = _replay_eval_rules(first_pass)
 
     replay_pass = run_research_loop(
         thesis_text,
@@ -64,11 +64,7 @@ def run_replay_demo(
     )
 
     comparisons = compare_replay_passes(first_pass, replay_pass)
-    summary = (
-        "First pass over-credited benchmark results as direct discovery evidence. "
-        "The generated eval rule forces the replay to treat the same benchmark sources "
-        "as proxy evidence, lowering confidence in prospective validation."
-    )
+    summary = _replay_summary(first_pass)
     replay_pass.eval_workshop = build_eval_workshop(
         replay_pass,
         replay_first_pass=first_pass,
@@ -115,18 +111,18 @@ def simulate_overcredited_first_pass(state: ResearchState) -> ResearchState:
     simulated = state.model_copy(deep=True)
     simulated.observability = None
     simulated.evidence_conflicts = []
+    overcredited_source_ids = _overcredited_source_ids(simulated)
 
     for item in simulated.evidence_items:
-        if item.source_id not in BENCHMARK_SOURCE_IDS:
+        if item.source_id not in overcredited_source_ids:
             continue
         item.evidence_type = "direct"
         item.confidence = max(item.confidence, 0.82)
         item.claim_supported = (
-            "Benchmark performance is over-credited as direct evidence for real-world "
-            "discovery acceleration."
+            "Proxy evidence is over-credited as direct evidence for the claimed real-world application."
         )
         item.limitation = (
-            "First-pass failure: the benchmark result was not bounded as proxy evidence."
+            "First-pass failure: the source was not bounded as proxy or indirect evidence."
         )
 
     for assumption in simulated.assumptions:
@@ -143,8 +139,8 @@ def simulate_overcredited_first_pass(state: ResearchState) -> ResearchState:
     _append_trace(
         simulated,
         "replay_first_pass",
-        "Simulated a first-pass failure that treated benchmark evidence as direct discovery support.",
-        metadata={"overcredited_sources": ", ".join(sorted(BENCHMARK_SOURCE_IDS))},
+        "Simulated a first-pass failure that treated proxy evidence as direct support.",
+        metadata={"overcredited_sources": ", ".join(sorted(overcredited_source_ids))},
     )
     return simulated
 
@@ -175,12 +171,42 @@ def compare_replay_passes(
     return comparisons
 
 
-def _benchmark_eval_rules(state: ResearchState) -> list[str]:
+def _replay_eval_rules(state: ResearchState) -> list[str]:
     return [
         generated_eval.eval_rule
         for generated_eval in state.generated_evals
         if "benchmark" in generated_eval.eval_rule.lower()
+        or "directly measures" in generated_eval.eval_rule.lower()
     ]
+
+
+def _overcredited_source_ids(state: ResearchState) -> set[str]:
+    if _is_demo_ai_scientist_state(state):
+        return set(BENCHMARK_SOURCE_IDS)
+    return {
+        item.source_id
+        for item in state.evidence_items
+        if item.evidence_type in {"proxy", "indirect", "anecdotal"}
+        and any(assumption_id in REPLAY_ASSUMPTION_IDS for assumption_id in item.assumption_ids)
+    }
+
+
+def _is_demo_ai_scientist_state(state: ResearchState) -> bool:
+    return any("graph memory captures" in assumption.text.lower() for assumption in state.assumptions)
+
+
+def _replay_summary(first_pass: ResearchState) -> str:
+    if _is_demo_ai_scientist_state(first_pass):
+        return (
+            "First pass over-credited benchmark results as direct discovery evidence. "
+            "The generated eval rule forces the replay to treat the same benchmark sources "
+            "as proxy evidence, lowering confidence in prospective validation."
+        )
+    return (
+        "First pass over-credited proxy evidence as direct application evidence. "
+        "The generated eval rule forces the replay to classify evidence by what it directly "
+        "measures, lowering confidence in standards-relevant validation."
+    )
 
 
 def _comparison_rationale(

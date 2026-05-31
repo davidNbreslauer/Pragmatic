@@ -1010,7 +1010,9 @@ if function_tool is not None:
                 max_sources=max_web_sources,
             )
         else:
-            corpus = load_corpus(corpus_path or None)
+            from pragmatic.corpus import resolve_corpus_path
+
+            corpus = load_corpus(resolve_corpus_path(thesis_text, corpus_path or None))
         sources = retrieve_sources(questions, corpus)
         _record_partial_list("sources", sources)
         for source in sources:

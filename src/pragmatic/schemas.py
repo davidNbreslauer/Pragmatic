@@ -291,6 +291,7 @@ class DemoScenario(BaseModel):
     execution_backend: ExecutionBackend
     observability_backend: ObservabilityBackend
     source_mode: SourceAcquisitionMode = "prepared"
+    corpus_path: str | None = None
     allow_live_web_search: bool = False
     replay_demo: bool = False
     live_dry_run: bool = True

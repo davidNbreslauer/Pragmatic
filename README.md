@@ -223,3 +223,7 @@ Performance work keeps strategy on the OpenAI Agents SDK while reducing demo lat
 ## Milestone 35
 
 The realtime cockpit now uses an Obsidian Observatory visual system: dark glass panels, mint-cyan live accents, glowing confidence-colored graph nodes, cinematic worker/counter motion, and a frosted answer drawer. The app keeps the same SSE event wiring and one-viewport layout while making the research run read like a precise mission-control instrument.
+
+## Milestone 36
+
+Completed realtime runs now open with a Bottom Line verdict built from the final `ResearchState`: verdict, confidence band, one-sentence takeaway, key reasons, biggest risk, decisive next test, and compact run stats. Deterministic and offline runs always get the template verdict, while live/scripted OpenAI runs may softly polish only the one-liner with a short timeout and safe fallback.

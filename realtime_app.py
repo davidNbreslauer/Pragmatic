@@ -285,6 +285,7 @@ def _run_job(job_id: str, thesis_text: str, config: dict[str, Any]) -> None:
 
         _append_state_cockpit_events(job_id, state)
         summary = _summarize_state(state)
+        _maybe_polish_bottom_line(summary, config)
         result = {
             "elapsed_seconds": round(time.monotonic() - started, 3),
             "summary": summary,
@@ -496,6 +497,7 @@ def _summarize_state(state: ResearchState) -> dict[str, Any]:
                 [result for result in state.research_task_results if result.backend == "modal"]
             ),
         },
+        "bottom_line": _build_bottom_line(state),
         "evidence": evidence,
         "gaps": gaps,
         "decisive_test": decisive,
@@ -505,6 +507,150 @@ def _summarize_state(state: ResearchState) -> dict[str, Any]:
             state.observability.workshop_path if state.observability is not None else None
         ),
     }
+
+
+def _build_bottom_line(state: ResearchState) -> dict[str, Any]:
+    direct_items = [item for item in state.evidence_items if item.evidence_type == "direct"]
+    limiting_items = [item for item in state.evidence_items if item.evidence_type == "contradictory"]
+    unresolved = [
+        assumption
+        for assumption in state.assumptions
+        if assumption.support_level in {"unknown", "unsupported", "contradicted", "weak"}
+    ]
+    if state.invalid_leaps or limiting_items or unresolved:
+        verdict = "Not proven yet"
+    elif direct_items:
+        verdict = "Supported with limits"
+    else:
+        verdict = "Promising but indirect"
+
+    mean_confidence = (
+        sum(assumption.confidence for assumption in state.assumptions) / len(state.assumptions)
+        if state.assumptions
+        else 0.0
+    )
+    if mean_confidence < 0.34:
+        confidence_label = "Low"
+        confidence_band = "low"
+    elif mean_confidence <= 0.66:
+        confidence_label = "Moderate"
+        confidence_band = "mid"
+    else:
+        confidence_label = "High"
+        confidence_band = "high"
+
+    source_titles = {source.id: source.title for source in state.sources}
+    counts = {
+        "sources": len(state.sources),
+        "evidence": len(state.evidence_items),
+        "invalid_leaps": len(state.invalid_leaps),
+        "generated_evals": len(state.generated_evals),
+        "modal_tasks": len([result for result in state.research_task_results if result.backend == "modal"]),
+    }
+    one_liner = (
+        f"{state.thesis.text}: {verdict.lower()} — "
+        f"{len(direct_items)} direct evidence item(s), "
+        f"{len(limiting_items)} limiting item(s), "
+        f"{len(state.invalid_leaps)} unsupported leap(s)."
+    )
+
+    because: list[str] = []
+    strongest_direct = max(direct_items, key=lambda item: item.confidence, default=None)
+    strongest_support = max(
+        [item for item in state.evidence_items if item.evidence_type != "contradictory"],
+        key=lambda item: item.confidence,
+        default=None,
+    )
+    if strongest_direct is not None:
+        because.append(
+            f"{strongest_direct.claim_supported} ({source_titles.get(strongest_direct.source_id, strongest_direct.source_id)})"
+        )
+    elif strongest_support is not None:
+        because.append(
+            f"{strongest_support.claim_supported} ({source_titles.get(strongest_support.source_id, strongest_support.source_id)})"
+        )
+    top_limiter = max(limiting_items, key=lambda item: item.confidence, default=None)
+    if top_limiter is not None:
+        because.append(f"Limiter: {top_limiter.claim_supported}")
+    elif state.invalid_leaps:
+        because.append(f"Limiter: {state.invalid_leaps[0].leap}")
+    if not because:
+        because.append("The run found relevant evidence but no decisive direct proof.")
+
+    if state.invalid_leaps:
+        leap = state.invalid_leaps[0]
+        biggest_risk = {"label": "Unsupported leap", "text": f"{leap.leap}: {leap.why_invalid}"}
+    else:
+        weak_assumption = min(unresolved, key=lambda assumption: assumption.confidence, default=None)
+        biggest_risk = {
+            "label": weak_assumption.support_level if weak_assumption is not None else "Residual uncertainty",
+            "text": (
+                f"{weak_assumption.text}: {weak_assumption.latest_update or weak_assumption.why_it_matters}"
+                if weak_assumption is not None
+                else "No major caveat surfaced beyond normal evidence limits."
+            ),
+        }
+
+    if state.decisive_tests:
+        test = state.decisive_tests[0]
+        criterion = test.success_criteria[0] if test.success_criteria else test.why_decisive
+        decisive_next_test = f"{test.test} Success means: {criterion}"
+    else:
+        decisive_next_test = "No decisive next test was generated."
+
+    stat_line = (
+        f"{counts['sources']} sources · {counts['evidence']} evidence · "
+        f"{counts['invalid_leaps']} leaps · {counts['generated_evals']} evals · "
+        f"{counts['modal_tasks']} Modal tasks"
+    )
+    return {
+        "verdict": verdict,
+        "confidence": round(mean_confidence, 3),
+        "confidence_label": confidence_label,
+        "confidence_band": confidence_band,
+        "one_liner": one_liner,
+        "one_liner_source": "deterministic",
+        "because": because[:3],
+        "biggest_risk": biggest_risk,
+        "decisive_next_test": decisive_next_test,
+        "stat_line": stat_line,
+        "counts": counts,
+    }
+
+
+def _maybe_polish_bottom_line(summary: dict[str, Any], config: dict[str, Any]) -> None:
+    if config.get("orchestration") not in {"live_sdk", "scripted_sdk"}:
+        return
+    if not os.getenv("OPENAI_API_KEY"):
+        return
+    bottom_line = summary.get("bottom_line")
+    if not isinstance(bottom_line, dict):
+        return
+    try:
+        from openai import OpenAI
+
+        risk = bottom_line.get("biggest_risk") or {}
+        because = "; ".join(str(item) for item in bottom_line.get("because", [])[:3])
+        prompt = (
+            "Bottom line this research result in one decisive plain-English sentence. "
+            "Maximum 30 words. Do not add facts. Avoid hype.\n\n"
+            f"Verdict: {bottom_line.get('verdict')}\n"
+            f"Confidence: {bottom_line.get('confidence_label')} {bottom_line.get('confidence')}\n"
+            f"Evidence: {because}\n"
+            f"Risk: {risk.get('label', '')}: {risk.get('text', '')}\n"
+            f"Draft: {bottom_line.get('one_liner')}"
+        )
+        response = OpenAI(timeout=5.0).responses.create(
+            model=str(config.get("model") or DEFAULT_MODEL),
+            input=prompt,
+            max_output_tokens=80,
+        )
+        polished = str(getattr(response, "output_text", "") or "").strip().strip('"')
+        if polished:
+            bottom_line["one_liner"] = " ".join(polished.split())
+            bottom_line["one_liner_source"] = "model"
+    except Exception as exc:
+        LOG.info("Bottom-line model polish skipped: %s: %s", type(exc).__name__, exc)
 
 
 def _public_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -616,13 +762,23 @@ INDEX_HTML = """<!doctype html>
       overflow: hidden;
     }
     .topbar {
-      display: grid;
-      grid-template-columns: minmax(360px, 1fr) auto;
-      gap: 12px;
-      align-items: start;
       min-height: 56px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-panel);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(18px) saturate(140%);
       animation: riseIn .7s var(--ease) both;
     }
+    .header-grid { display: grid; gap: 12px; }
+    .identity-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-block { min-width: 240px; }
     .brand {
       display: inline-flex;
       align-items: center;
@@ -641,34 +797,44 @@ INDEX_HTML = """<!doctype html>
       background: radial-gradient(circle, #fff 0 12%, var(--accent) 34%, rgba(94,230,201,.1) 72%);
       box-shadow: 0 0 18px rgba(94,230,201,.9), 0 0 42px rgba(94,230,201,.24);
     }
-    .tagline { color: var(--text-muted); font-size: 12px; margin: 3px 0 6px 22px; }
+    .tagline { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
     h2, h3, label, .phase, .badge, .chip, .metric .label, .counter .label {
       text-transform: uppercase;
       letter-spacing: .12em;
     }
     h2 { margin: 0; font-size: 11px; color: var(--text); font-weight: 700; }
     h3 { margin: 0 0 8px; font-size: 11px; color: var(--text-muted); }
-    .ask, .panel {
+    .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius-panel);
       box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.06);
       backdrop-filter: blur(18px) saturate(140%);
     }
-    .ask { position: relative; padding: 12px; overflow: hidden; }
+    .ask { position: relative; overflow: hidden; }
     .ask::after {
       content: "";
       position: absolute;
-      left: 12px;
-      right: 12px;
+      left: 0;
+      right: 0;
       bottom: 0;
       height: 1px;
       background: linear-gradient(90deg, transparent, rgba(94,230,201,.75), rgba(106,168,255,.4), transparent);
     }
     label { display: block; font-weight: 700; margin-bottom: 5px; font-size: 10px; color: var(--text-faint); }
-    .question-row { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 10px; align-items: end; }
-    .question-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    .question-row { display: flex; align-items: flex-end; gap: 12px; }
+    .question-field { flex: 1 1 auto; min-width: 0; }
+    .question-actions {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 8px;
+      align-items: flex-end;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .button-group { display: flex; gap: 8px; align-items: center; }
     textarea {
+      display: block;
       width: 100%;
       height: 52px;
       min-height: 52px;
@@ -693,6 +859,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: var(--radius-control);
       padding: 9px 12px;
+      height: 36px;
       background: rgba(255,255,255,.045);
       color: var(--text);
       font-family: var(--font-ui);
@@ -725,17 +892,21 @@ INDEX_HTML = """<!doctype html>
     }
     details { margin-top: 7px; color: var(--text-muted); font-size: 12px; }
     details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-    .chips { display: flex; flex-direction: column; gap: 6px; align-items: stretch; justify-self: end; min-width: 154px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
     .chip, .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
       border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 5px 8px;
+      padding: 0 10px;
       background: rgba(255,255,255,.045);
       color: var(--text-muted);
       font-size: 10px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
     }
-    .chip { width: 100%; }
+    .chip { white-space: nowrap; }
+    #modeBadge { justify-content: center; max-width: 340px; text-align: right; }
     .chip::before {
       content: "";
       display: inline-block;
@@ -922,6 +1093,24 @@ INDEX_HTML = """<!doctype html>
     }
     .answer.visible { display: block; transform: translateY(0) scale(1); opacity: 1; }
     .answer-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .bottom-line { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.035)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 44px rgba(94,230,201,.06); }
+    .bottom-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .verdict-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 8px 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; animation: payoffPulse .72s var(--ease) both; }
+    .verdict-pill.low { color: #19070B; background: var(--accent-low); box-shadow: 0 0 28px rgba(255,92,122,.26); }
+    .verdict-pill.mid { color: #181000; background: var(--accent-mid); box-shadow: 0 0 28px rgba(244,193,82,.22); }
+    .verdict-pill.high { color: #04100D; background: var(--accent); box-shadow: 0 0 28px rgba(94,230,201,.26); }
+    .confidence-meter { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font: 12px var(--font-mono); }
+    .confidence-meter::before { content: ""; width: 86px; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-low), var(--accent-mid), var(--accent)); box-shadow: 0 0 18px rgba(94,230,201,.12); }
+    .ai-tag { border: 1px solid rgba(106,168,255,.22); border-radius: 999px; padding: 4px 7px; color: var(--accent-2); font-size: 10px; text-transform: uppercase; letter-spacing: .12em; background: rgba(106,168,255,.07); }
+    .bottom-one-liner { margin: 12px 0; font-size: clamp(21px, 2.6vw, 34px); line-height: 1.08; color: var(--text); font-weight: 700; }
+    .bottom-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; }
+    .bottom-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: rgba(255,255,255,.035); min-height: 88px; }
+    .bottom-row .label { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 6px; }
+    .bottom-row ul { margin: 0; padding-left: 16px; color: var(--text-muted); }
+    .bottom-row li { margin: 0 0 4px; }
+    .bottom-risk, .bottom-test { color: var(--text-muted); line-height: 1.35; }
+    .stat-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; color: var(--text-faint); font: 11px var(--font-mono); }
+    .stat-line span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 7px; background: rgba(255,255,255,.03); }
     .headline { font-size: clamp(22px, 3vw, 34px); line-height: 1.08; font-weight: 700; margin: 8px 0 10px; color: var(--text); }
     .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
     .metric { border: 1px solid var(--line); border-radius: 12px; padding: 9px; background: rgba(255,255,255,.04); }
@@ -942,13 +1131,15 @@ INDEX_HTML = """<!doctype html>
     @keyframes pulseLine { 0%, 100% { box-shadow: 0 0 8px rgba(94,230,201,.25); } 50% { box-shadow: 0 0 22px rgba(94,230,201,.75); } }
     @keyframes toastIn { to { opacity: 1; transform: translateY(0); } }
     @keyframes shimmer { to { transform: translateX(100%); } }
+    @keyframes payoffPulse { 0% { opacity: 0; transform: scale(.88); } 70% { transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
     @media (max-width: 1050px) {
       main { overflow: auto; }
       body { overflow: auto; }
-      .topbar, .question-row, .cockpit, .tables { grid-template-columns: 1fr; }
+      .identity-row, .question-row { align-items: stretch; flex-direction: column; }
+      .cockpit, .tables, .bottom-grid { grid-template-columns: 1fr; }
       .pane { min-height: 360px; }
       details .grid, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .chips, .question-actions { justify-content: flex-start; justify-self: stretch; }
+      .chips, .question-actions { align-items: flex-start; justify-content: flex-start; }
     }
     @media (max-width: 650px) {
       details .grid, .metrics, .phase-ribbon { grid-template-columns: 1fr; }
@@ -961,17 +1152,28 @@ INDEX_HTML = """<!doctype html>
 <body>
   <main>
     <section class="topbar">
-      <section class="ask">
-        <div class="question-row">
-          <div>
-            <div class="brand">Pragmatic AI: Do diligence.</div>
+      <section class="ask header-grid">
+        <div class="identity-row">
+          <div class="brand-block">
+            <div class="brand">Pragmatic AI</div>
             <div class="tagline">Sourced evidence, confidence updates, next decisive test.</div>
+          </div>
+          <div class="chips">
+            <span class="chip">OpenAI Agents SDK</span>
+            <span class="chip">Modal</span>
+            <span class="chip">Raindrop</span>
+          </div>
+        </div>
+        <div class="question-row">
+          <div class="question-field">
             <label for="question">Question</label>
             <textarea id="question" rows="2">__DEFAULT_THESIS__</textarea>
           </div>
           <div class="question-actions">
-            <button class="primary" id="ask">Ask Pragmatic</button>
-            <button id="stop" disabled>Stop</button>
+            <div class="button-group">
+              <button class="primary" id="ask">Ask Pragmatic</button>
+              <button id="stop" disabled>Stop</button>
+            </div>
             <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
           </div>
         </div>
@@ -989,11 +1191,6 @@ INDEX_HTML = """<!doctype html>
           </div>
         </details>
       </section>
-      <div class="chips">
-        <span class="chip">OpenAI Agents SDK</span>
-        <span class="chip">Modal</span>
-        <span class="chip">Raindrop</span>
-      </div>
     </section>
     <section class="phase-ribbon" id="phases">
       <div class="phase" data-phase="decompose">Decompose</div>
@@ -1027,6 +1224,7 @@ INDEX_HTML = """<!doctype html>
         <div class="brand">Best Current Answer</div>
         <button class="answer-close" id="answerClose" type="button">Close</button>
       </div>
+      <section class="bottom-line" id="bottomLine"></section>
       <div class="headline" id="headline"></div>
       <p id="answerText"></p>
       <div class="metrics" id="metrics"></div>
@@ -1453,6 +1651,7 @@ INDEX_HTML = """<!doctype html>
     function renderAnswer(result) {
       const summary = result.summary;
       document.querySelectorAll(".phase").forEach(el => el.className = "phase done");
+      renderBottomLine(summary.bottom_line);
       document.getElementById("headline").textContent = summary.headline;
       document.getElementById("answerText").textContent =
         summary.verdict === "Not proven yet"
@@ -1473,6 +1672,37 @@ INDEX_HTML = """<!doctype html>
         summary.workshop_path ? `<p><strong>Workshop:</strong> ${escapeHtml(summary.workshop_path)}</p>` : ""
       ].join("");
       document.getElementById("answer").classList.add("visible");
+    }
+    function renderBottomLine(bottomLine) {
+      if (!bottomLine) {
+        document.getElementById("bottomLine").innerHTML = "";
+        return;
+      }
+      const risk = bottomLine.biggest_risk || {};
+      const stats = String(bottomLine.stat_line || "")
+        .split(" · ")
+        .filter(Boolean)
+        .map(item => `<span>${escapeHtml(item)}</span>`)
+        .join("");
+      const because = (bottomLine.because || [])
+        .map(item => `<li>${escapeHtml(item)}</li>`)
+        .join("");
+      const band = bottomLine.confidence_band || "mid";
+      const sourceTag = bottomLine.one_liner_source === "model" ? '<span class="ai-tag">AI summary</span>' : "";
+      document.getElementById("bottomLine").innerHTML = `
+        <div class="bottom-top">
+          <span class="verdict-pill ${escapeHtml(band)}">${escapeHtml(bottomLine.verdict || "Verdict")}</span>
+          <span class="confidence-meter">${escapeHtml(bottomLine.confidence_label || "Confidence")} ${escapeHtml(String(bottomLine.confidence ?? ""))}</span>
+          ${sourceTag}
+        </div>
+        <div class="bottom-one-liner">${escapeHtml(bottomLine.one_liner || "")}</div>
+        <div class="bottom-grid">
+          <div class="bottom-row"><div class="label">Because</div><ul>${because}</ul></div>
+          <div class="bottom-row"><div class="label">Biggest risk</div><div class="bottom-risk"><strong>${escapeHtml(risk.label || "")}</strong><br>${escapeHtml(risk.text || "")}</div></div>
+          <div class="bottom-row"><div class="label">Decisive next test</div><div class="bottom-test">${escapeHtml(bottomLine.decisive_next_test || "")}</div></div>
+        </div>
+        <div class="stat-line">${stats}</div>
+      `;
     }
     function tableHtml(headers, rows) {
       if (!rows.length) return "<tbody><tr><td>No rows yet.</td></tr></tbody>";

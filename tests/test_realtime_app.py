@@ -1,4 +1,12 @@
-from realtime_app import MAX_STORED_EVENTS_PER_JOB, RUNS, _append_event, _new_job
+from pragmatic import DEFAULT_THESIS
+from pragmatic.research_loop import run_research_loop
+from realtime_app import (
+    MAX_STORED_EVENTS_PER_JOB,
+    RUNS,
+    _append_event,
+    _build_bottom_line,
+    _new_job,
+)
 
 
 def test_append_event_preserves_kind_and_caps_events():
@@ -23,3 +31,17 @@ def test_append_event_preserves_kind_and_caps_events():
     assert events[-1]["kind"] == "node.add"
     assert events[-1]["metadata"]["id"] == f"A{MAX_STORED_EVENTS_PER_JOB + 2}"
     assert events[0]["message"] == "event 3"
+
+
+def test_build_bottom_line_populates_verdict_and_next_test():
+    state = run_research_loop(DEFAULT_THESIS, observability_mode="off")
+
+    bottom_line = _build_bottom_line(state)
+
+    assert bottom_line["verdict"]
+    assert bottom_line["confidence_band"] in {"low", "mid", "high"}
+    assert bottom_line["one_liner"]
+    assert bottom_line["one_liner_source"] == "deterministic"
+    assert bottom_line["because"]
+    assert bottom_line["biggest_risk"]["text"]
+    assert bottom_line["decisive_next_test"] != "No decisive next test was generated."

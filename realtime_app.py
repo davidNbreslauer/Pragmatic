@@ -788,7 +788,8 @@ INDEX_HTML = """<!doctype html>
     html { background: var(--canvas); }
     body {
       margin: 0;
-      overflow: hidden;
+      min-height: 100vh;
+      overflow: auto;
       background:
         radial-gradient(circle at 50% -10%, rgba(94,230,201,.14), transparent 34%),
         radial-gradient(circle at 78% 18%, rgba(106,168,255,.10), transparent 30%),
@@ -806,14 +807,14 @@ INDEX_HTML = """<!doctype html>
       mix-blend-mode: screen;
     }
     main {
-      height: 100vh;
+      min-height: 100vh;
       max-width: 1440px;
       margin: 0 auto;
       padding: 12px 18px 14px;
       display: grid;
       grid-template-rows: auto auto 1fr;
       gap: 12px;
-      overflow: hidden;
+      overflow: visible;
     }
     .topbar {
       min-height: 56px;
@@ -1526,9 +1527,9 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("reasoningStatus").textContent = "waiting";
     }
     function onProgress(event) {
-      addLog(event);
       markPhase(event.stage);
       const kind = event.kind || event.metadata?.kind || "";
+      if (kind !== "reasoning.delta") addLog(event);
       if (kind === "reasoning.delta") appendReasoning(event.metadata?.text || "");
       else if (kind === "tool.call") addToolChip(event.metadata?.name || event.stage, event);
       else if (kind === "tool.output") addToolChip(`${event.metadata?.name || "tool"} done`, event);
@@ -2195,6 +2196,7 @@ INDEX_HTML = """<!doctype html>
       div.className = "event";
       div.innerHTML = `<strong>${escapeHtml(event.message || event.stage)}</strong><span>${event.index || ""} | ${escapeHtml(event.kind || event.stage)} | ${escapeHtml(event.status)}</span>`;
       log.prepend(div);
+      while (log.children.length > 80) log.lastElementChild?.remove();
     }
     function renderAnswer(result) {
       const summary = result.summary;

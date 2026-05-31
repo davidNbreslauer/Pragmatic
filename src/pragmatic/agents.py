@@ -169,6 +169,7 @@ def _emit_node_add(
     *,
     confidence: float | None = None,
     stage: str = "graph",
+    **extra: Any,
 ) -> None:
     payload: dict[str, Any] = {
         "id": node_id,
@@ -177,6 +178,7 @@ def _emit_node_add(
     }
     if confidence is not None:
         payload["confidence"] = confidence
+    payload.update({key: value for key, value in extra.items() if value not in (None, "")})
     _emit_cockpit_event(
         "node.add",
         stage=stage,
@@ -253,7 +255,15 @@ def _emit_state_graph_snapshot(state: ResearchState, *, stage: str = "graph") ->
             stage=stage,
         )
     for source in state.sources:
-        _emit_node_add(source.id, "source", source.title, stage=stage)
+        _emit_node_add(
+            source.id,
+            "source",
+            source.title,
+            stage=stage,
+            source_type=source.source_type,
+            url=source.url,
+            citation=source.citation,
+        )
     for item in state.evidence_items:
         _emit_node_add(
             item.id,
@@ -1040,7 +1050,15 @@ if function_tool is not None:
         sources = retrieve_sources(questions, corpus)
         _record_partial_list("sources", sources)
         for source in sources:
-            _emit_node_add(source.id, "source", source.title, stage="tool.retrieve_sources_tool")
+            _emit_node_add(
+                source.id,
+                "source",
+                source.title,
+                stage="tool.retrieve_sources_tool",
+                source_type=source.source_type,
+                url=source.url,
+                citation=source.citation,
+            )
         _emit_counter(sources=len(sources), stage="tool.retrieve_sources_tool")
         _emit_tool_progress(
             "retrieve_sources_tool",
@@ -1147,6 +1165,7 @@ if function_tool is not None:
             if reason
         ]
         combined_results = [*parse_result.results, *extraction_result.results]
+        source_title_by_id = {source.id: source.title for source in parsed_sources}
         result = ResearchBatchResult(
             backend=extraction_result.backend,
             attempted_backend=extraction_result.attempted_backend,
@@ -1177,11 +1196,22 @@ if function_tool is not None:
                 status="succeeded" if task_result.status == "succeeded" else "failed",
                 message=f"{task_result.task_id} {task_result.status}.",
                 task_id=task_result.task_id,
+                task_type=task_result.task_type,
                 source_id=source_id,
+                source_title=source_title_by_id.get(source_id, ""),
                 task_status=task_result.status,
+                evidence_count=len(task_result.evidence_items),
             )
             for source in task_result.sources:
-                _emit_node_add(source.id, "source", source.title, stage="tool.execute_source_research_tasks_tool")
+                _emit_node_add(
+                    source.id,
+                    "source",
+                    source.title,
+                    stage="tool.execute_source_research_tasks_tool",
+                    source_type=source.source_type,
+                    url=source.url,
+                    citation=source.citation,
+                )
             for item in task_result.evidence_items:
                 _emit_node_add(
                     item.id,

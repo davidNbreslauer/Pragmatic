@@ -366,7 +366,13 @@ def _append_state_cockpit_events(job_id: str, state: ResearchState) -> None:
 
     seen_nodes: set[str] = set()
 
-    def add_node(node_id: str, node_kind: str, label: str, confidence: float | None = None) -> None:
+    def add_node(
+        node_id: str,
+        node_kind: str,
+        label: str,
+        confidence: float | None = None,
+        **extra: Any,
+    ) -> None:
         if node_id in seen_nodes:
             return
         seen_nodes.add(node_id)
@@ -377,6 +383,7 @@ def _append_state_cockpit_events(job_id: str, state: ResearchState) -> None:
         }
         if confidence is not None:
             metadata["confidence"] = confidence
+        metadata.update({key: value for key, value in extra.items() if value not in (None, "")})
         _append_event(
             job_id,
             {
@@ -403,7 +410,14 @@ def _append_state_cockpit_events(job_id: str, state: ResearchState) -> None:
     for assumption in state.assumptions:
         add_node(assumption.id, "assumption", assumption.text, assumption.confidence)
     for source in state.sources:
-        add_node(source.id, "source", source.title)
+        add_node(
+            source.id,
+            "source",
+            source.title,
+            source_type=source.source_type,
+            url=source.url,
+            citation=source.citation,
+        )
     for item in state.evidence_items:
         add_node(item.id, "evidence", item.claim_supported, item.confidence)
         add_edge(item.source_id, item.id, "contradicts" if item.evidence_type == "contradictory" else "supports")
@@ -911,6 +925,56 @@ INDEX_HTML = """<!doctype html>
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
     }
+    .activity-strip {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 13px;
+      border-radius: 16px;
+      color: var(--text-muted);
+      opacity: .78;
+      transition: opacity .22s ease, border-color .22s ease, background .22s ease, box-shadow .22s ease;
+    }
+    .activity-strip.running {
+      opacity: 1;
+      border-color: rgba(94,230,201,.22);
+      background: rgba(94,230,201,.045);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 24px rgba(94,230,201,.08);
+    }
+    .activity-strip .spinner {
+      flex: 0 0 auto;
+      opacity: .35;
+      animation: none;
+      border-color: rgba(148,159,180,.18);
+      border-top-color: rgba(148,159,180,.38);
+    }
+    .activity-strip.running .spinner {
+      opacity: 1;
+      animation: spin .8s linear infinite;
+      border-color: rgba(94,230,201,.18);
+      border-top-color: var(--accent);
+    }
+    .activity-copy { min-width: 0; display: grid; gap: 2px; }
+    .activity-title {
+      color: var(--text);
+      font-weight: 800;
+      font-size: 12px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .activity-detail {
+      color: var(--text-faint);
+      font: 10px/1.25 var(--font-mono);
+      white-space: normal;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
     textarea {
       display: block;
       width: 100%;
@@ -1038,12 +1102,14 @@ INDEX_HTML = """<!doctype html>
     .phase.done::after { background: var(--accent); transform: scaleX(1); box-shadow: 0 0 14px rgba(94,230,201,.45); }
     .cockpit {
       min-height: 0;
+      height: clamp(460px, calc(100vh - 250px), 760px);
       display: grid;
       grid-template-columns: minmax(250px, .78fr) minmax(390px, 1.28fr) minmax(270px, .82fr);
       gap: 12px;
     }
     .pane {
       min-height: 0;
+      height: 100%;
       padding: 12px;
       overflow: hidden;
       display: flex;
@@ -1073,6 +1139,7 @@ INDEX_HTML = """<!doctype html>
       flex: 1;
       min-height: 0;
       overflow: auto;
+      scrollbar-gutter: stable;
       display: flex;
       flex-direction: column;
       gap: 7px;
@@ -1159,6 +1226,7 @@ INDEX_HTML = """<!doctype html>
       max-height: 120px;
       margin-top: 8px;
       overflow: auto;
+      scrollbar-gutter: stable;
       border: 1px solid rgba(255,255,255,.06);
       border-radius: 10px;
       padding: 9px;
@@ -1261,7 +1329,7 @@ INDEX_HTML = """<!doctype html>
     }
     .toast.visible { display: block; animation: toastIn .6s var(--ease) forwards; }
     .workers { display: none; }
-    .workers:not(:empty) { flex: 0 0 34%; min-height: 100px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-content: start; }
+    .workers:not(:empty) { flex: 0 1 34%; min-height: 100px; overflow: auto; scrollbar-gutter: stable; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-content: start; }
     .worker {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -1285,7 +1353,7 @@ INDEX_HTML = """<!doctype html>
     .counter .label { font-size: 9px; color: var(--text-faint); }
     .counter .value { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 700; margin-top: 1px; color: var(--text); font-family: var(--font-mono); }
     .counter.bump { border-color: rgba(94,230,201,.5); box-shadow: 0 0 24px rgba(94,230,201,.14); }
-    .event-log { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .event-log { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .event { border: 1px solid var(--line); border-radius: 10px; padding: 7px; background: rgba(255,255,255,.03); font-size: 11px; color: var(--text-muted); animation: tileIn .28s var(--ease) both; }
     .event strong { display: block; font-size: 11px; color: var(--text); }
     .event span { color: var(--text-faint); }
@@ -1352,7 +1420,8 @@ INDEX_HTML = """<!doctype html>
       body { overflow: auto; }
       .identity-row, .question-row { align-items: stretch; flex-direction: column; }
       .cockpit, .tables, .bottom-grid { grid-template-columns: 1fr; }
-      .pane { min-height: 360px; }
+      .cockpit { height: auto; }
+      .pane { height: min(560px, 72vh); min-height: 360px; }
       details .grid, .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .chips, .question-actions { align-items: flex-start; justify-content: flex-start; }
     }
@@ -1417,6 +1486,13 @@ INDEX_HTML = """<!doctype html>
       <div class="phase" data-phase="update">Update</div>
       <div class="phase" data-phase="test">Test</div>
     </section>
+    <section class="activity-strip panel" id="activityStrip">
+      <span class="spinner"></span>
+      <div class="activity-copy">
+        <div class="activity-title" id="activityTitle">Idle</div>
+        <div class="activity-detail" id="activityDetail">Waiting for a question.</div>
+      </div>
+    </section>
     <section class="cockpit">
       <aside class="panel pane">
         <div class="pane-head"><h2>Thinking</h2><span class="badge" id="reasoningStatus">waiting</span></div>
@@ -1464,6 +1540,9 @@ INDEX_HTML = """<!doctype html>
     const stop = document.getElementById("stop");
     const runIndicator = document.getElementById("runIndicator");
     const runTimer = document.getElementById("runTimer");
+    const activityStrip = document.getElementById("activityStrip");
+    const activityTitle = document.getElementById("activityTitle");
+    const activityDetail = document.getElementById("activityDetail");
     const thinking = document.getElementById("thinking");
     const thoughtStream = document.getElementById("thoughtStream");
     const rawReasoning = document.getElementById("rawReasoning");
@@ -1484,6 +1563,7 @@ INDEX_HTML = """<!doctype html>
     let workerById = new Map();
     let latestCounters = {sources: 0, evidence: 0, leaps: 0, conflicts: 0, tests: 0};
     let thinkingLines = 0;
+    let lastReasoningActivityAt = 0;
     const svg = document.getElementById("beliefGraph");
     const linkLayer = svgEl("g", {});
     const nodeLayer = svgEl("g", {});
@@ -1525,8 +1605,10 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("graphStatus").textContent = "0 nodes";
       document.getElementById("workerStatus").textContent = "idle";
       document.getElementById("reasoningStatus").textContent = "waiting";
+      setActivity("Idle", "Waiting for a question.", false);
     }
     function onProgress(event) {
+      updateActivity(event);
       markPhase(event.stage);
       const kind = event.kind || event.metadata?.kind || "";
       if (kind !== "reasoning.delta") addLog(event);
@@ -1644,6 +1726,134 @@ INDEX_HTML = """<!doctype html>
       thoughtStream.scrollTop = thoughtStream.scrollHeight;
       document.getElementById("reasoningStatus").textContent = "tools active";
       if (card.nodeId) flashNode(card.nodeId);
+    }
+    function setActivity(title, detail = "", running = true) {
+      activityTitle.textContent = title || "Working";
+      activityTitle.title = title || "Working";
+      activityDetail.textContent = detail || "";
+      activityDetail.title = detail || "";
+      activityStrip.classList.toggle("running", Boolean(running));
+    }
+    function updateActivity(event) {
+      const activity = describeActivity(event);
+      if (!activity) return;
+      setActivity(activity.title, activity.detail, activity.running !== false);
+    }
+    function describeActivity(event) {
+      const kind = event.kind || event.metadata?.kind || "";
+      const meta = event.metadata || {};
+      if (kind === "reasoning.delta") {
+        const now = performance.now();
+        if (now - lastReasoningActivityAt < 700) return null;
+        lastReasoningActivityAt = now;
+        return {title: "Thinking through the next step", detail: phaseLabel(event.stage)};
+      }
+      if (kind === "tool.call") return {title: toolLabel(meta.name || event.stage, "call"), detail: summarizeToolArgs(meta.name, meta.args_preview) || phaseLabel(event.stage)};
+      if (kind === "tool.output") return {title: toolLabel(meta.name || event.stage, "done"), detail: summarizeToolOutput(meta.name, meta.summary) || event.message || phaseLabel(event.stage)};
+      if (kind === "fanout.spawn") return {title: "Dispatching research workers", detail: `${meta.tasks || 0} ${meta.backend || "local"} tasks`};
+      if (kind === "fanout.task") return {title: `Worker ${meta.task_status || event.status}`, detail: [meta.source_title || meta.source_id, meta.task_type, meta.evidence_count ? `${meta.evidence_count} evidence` : ""].filter(Boolean).join(" · ") || meta.task_id || phaseLabel(event.stage)};
+      if (kind === "node.add") return {title: `Adding ${meta.node_kind || "node"} to graph`, detail: nodeActivityDetail(meta)};
+      if (kind === "edge.add") return {title: "Connecting graph evidence", detail: `${meta.from || meta.source || ""} → ${meta.to || meta.target || ""}`};
+      if (kind === "node.confidence") return {title: "Updating confidence", detail: `${meta.id || "node"} ${formatConfidence(meta.from)} → ${formatConfidence(meta.to)}`};
+      if (kind === "counter") return {title: "Updating research counters", detail: counterSummary(meta)};
+      if (meta.tool_name) return {title: toolLabel(meta.tool_name, event.status === "succeeded" ? "done" : "call"), detail: summarizeToolProgress(meta.tool_name, meta, event)};
+      if (event.stage === "answer") return {title: "Answer ready", detail: event.message || "", running: false};
+      if (event.stage === "error" || event.status === "failed") return {title: "Run failed", detail: event.message || event.stage || "", running: false};
+      if (event.status === "stopped") return {title: "Stopped", detail: event.message || "", running: false};
+      return {title: event.message || phaseLabel(event.stage) || "Working", detail: event.status || ""};
+    }
+    function nodeActivityDetail(meta) {
+      const pieces = [];
+      if (meta.label) pieces.push(meta.label);
+      if (meta.source_type) pieces.push(meta.source_type);
+      if (meta.url) pieces.push(compactUrl(meta.url));
+      if (meta.confidence !== undefined) pieces.push(`confidence ${formatConfidence(meta.confidence)}`);
+      return pieces.filter(Boolean).join(" · ") || meta.id || "";
+    }
+    function summarizeToolProgress(name, meta, event) {
+      const cleaned = String(name || "");
+      if (cleaned === "retrieve_sources_tool") {
+        if (event.status === "succeeded") return `${meta.source_count || 0} sources retrieved`;
+        return `${meta.source_mode || "prepared"} sources${meta.allow_live_web_search ? " · live web enabled" : ""}`;
+      }
+      if (cleaned === "score_retrieval_tool") return meta.score_count ? `${meta.score_count} relevance scores` : event.message || "";
+      if (cleaned === "execute_source_research_tasks_tool") {
+        return [meta.task_count ? `${meta.task_count} tasks` : "", meta.backend || meta.execution_backend || "", meta.source_count ? `${meta.source_count} sources` : ""].filter(Boolean).join(" · ") || event.message || "";
+      }
+      if (cleaned === "extract_evidence_tool") return meta.evidence_count ? `${meta.evidence_count} evidence items` : event.message || "";
+      return summarizeMetadata(meta) || event.message || "";
+    }
+    function summarizeToolArgs(name, raw) {
+      const parsed = parseMaybeJson(raw);
+      if (!parsed || typeof parsed !== "object") return cleanPreview(raw);
+      const cleaned = String(name || "");
+      if (cleaned === "retrieve_sources_tool") {
+        const questions = parseMaybeJson(parsed.research_questions_json);
+        const firstQuestion = Array.isArray(questions) ? questions[0]?.query || questions[0]?.question : "";
+        return [`${parsed.source_mode || "prepared"} sources`, firstQuestion ? `query: ${shortText(firstQuestion, 90)}` : "", parsed.max_web_sources ? `max ${parsed.max_web_sources}` : ""].filter(Boolean).join(" · ");
+      }
+      if (cleaned === "execute_source_research_tasks_tool" || cleaned === "extract_evidence_tool" || cleaned === "score_retrieval_tool") {
+        const sources = parseMaybeJson(parsed.sources_json);
+        const sourceSummary = summarizeSourceList(sources);
+        return [sourceSummary, parsed.execution_backend || "", parsed.fallback_to_local === false ? "no fallback" : ""].filter(Boolean).join(" · ");
+      }
+      return summarizeMetadata(parsed);
+    }
+    function summarizeToolOutput(name, raw) {
+      const parsed = parseMaybeJson(raw);
+      if (parsed) {
+        if (Array.isArray(parsed)) return summarizeSourceList(parsed) || `${parsed.length} items`;
+        if (parsed.results) return `${parsed.results.length} task results · ${parsed.backend || "backend unknown"}`;
+      }
+      return cleanPreview(raw);
+    }
+    function summarizeSourceList(value) {
+      if (!Array.isArray(value) || !value.length) return "";
+      const titles = value.slice(0, 2).map(source => source.title || source.id).filter(Boolean).map(title => shortText(title, 48));
+      return `${value.length} sources${titles.length ? `: ${titles.join(" · ")}` : ""}`;
+    }
+    function summarizeMetadata(value) {
+      if (!value || typeof value !== "object") return "";
+      return Object.entries(value)
+        .filter(([key, val]) => key !== "tool_name" && val !== undefined && val !== null && String(val).trim())
+        .slice(0, 3)
+        .map(([key, val]) => `${key}=${shortText(val, 72)}`)
+        .join(" · ");
+    }
+    function parseMaybeJson(value) {
+      if (!value || typeof value !== "string") return value || null;
+      const text = value.trim();
+      if (!text || !["{", "["].includes(text[0])) return null;
+      try { return JSON.parse(text); } catch { return null; }
+    }
+    function cleanPreview(value) {
+      return shortText(String(value || "").replace(/\\s+/g, " ").trim(), 160);
+    }
+    function shortText(value, length = 120) {
+      const text = String(value || "").replace(/\\s+/g, " ").trim();
+      return text.length > length ? `${text.slice(0, Math.max(0, length - 1))}…` : text;
+    }
+    function compactUrl(value) {
+      try {
+        const url = new URL(String(value));
+        return `${url.hostname}${url.pathname}`.replace(/\\/$/, "");
+      } catch {
+        return shortText(value, 80);
+      }
+    }
+    function phaseLabel(stage) {
+      const labels = {
+        input: "Reading the question",
+        decompose: "Breaking the claim into checks",
+        retrieve: "Retrieving sources",
+        extract: "Extracting evidence",
+        check: "Cross-checking evidence",
+        update: "Updating the belief graph",
+        test: "Testing the next decisive claim",
+        live_harness: "Starting live run",
+        live_sdk: "OpenAI Agents SDK run",
+      };
+      return labels[stage] || titleCase(String(stage || "").replace(/_/g, " "));
     }
     function describeThought(event) {
       const kind = event.kind || event.metadata?.kind || "";
@@ -2291,6 +2501,7 @@ INDEX_HTML = """<!doctype html>
       ask.disabled = true;
       stop.disabled = false;
       runIndicator.classList.add("visible");
+      setActivity("Starting Pragmatic run", "Opening the event stream.", true);
       startRunTimer();
       document.getElementById("modeBadge").textContent =
         `${document.getElementById("orchestration").value} / ${document.getElementById("execution_backend").value} / ${document.getElementById("source_mode").value}`;
@@ -2325,8 +2536,10 @@ INDEX_HTML = """<!doctype html>
         stopRunTimer();
         source.close();
         document.getElementById("reasoningStatus").textContent = "complete";
-        if (done.status === "succeeded") renderAnswer(done.result);
-        else onProgress({stage: "error", status: "failed", message: done.error || "Run failed", metadata: {}});
+        if (done.status === "succeeded") {
+          setActivity("Answer ready", "Run completed successfully.", false);
+          renderAnswer(done.result);
+        } else onProgress({stage: "error", status: "failed", message: done.error || "Run failed", metadata: {}});
       });
     }
     ask.addEventListener("click", startRun);

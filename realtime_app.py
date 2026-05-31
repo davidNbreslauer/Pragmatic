@@ -903,6 +903,13 @@ INDEX_HTML = """<!doctype html>
       box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 18px rgba(94,230,201,.08);
     }
     .run-indicator.visible { display: inline-flex; }
+    .run-timer {
+      margin-left: 6px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
     textarea {
       display: block;
       width: 100%;
@@ -1380,7 +1387,7 @@ INDEX_HTML = """<!doctype html>
             <div class="button-group">
               <button class="primary" id="ask">Ask Pragmatic</button>
               <button id="stop" disabled>Stop</button>
-              <span class="run-indicator" id="runIndicator"><span class="spinner"></span>Running</span>
+              <span class="run-indicator" id="runIndicator"><span class="spinner"></span>Running <span class="run-timer" id="runTimer">0.0s</span></span>
             </div>
             <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
           </div>
@@ -1455,6 +1462,7 @@ INDEX_HTML = """<!doctype html>
     const ask = document.getElementById("ask");
     const stop = document.getElementById("stop");
     const runIndicator = document.getElementById("runIndicator");
+    const runTimer = document.getElementById("runTimer");
     const thinking = document.getElementById("thinking");
     const thoughtStream = document.getElementById("thoughtStream");
     const rawReasoning = document.getElementById("rawReasoning");
@@ -1463,6 +1471,8 @@ INDEX_HTML = """<!doctype html>
     const toast = document.getElementById("toast");
     const graphDetail = document.getElementById("graphDetail");
     let source = null;
+    let runStartedAt = 0;
+    let runTimerId = null;
     let pendingText = "";
     let textFrame = null;
     let graphNodes = [];
@@ -2257,11 +2267,29 @@ INDEX_HTML = """<!doctype html>
     function escapeHtml(value) {
       return String(value || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
+    function startRunTimer() {
+      runStartedAt = performance.now();
+      runTimer.textContent = "0.0s";
+      if (runTimerId) clearInterval(runTimerId);
+      runTimerId = setInterval(updateRunTimer, 100);
+      updateRunTimer();
+    }
+    function updateRunTimer() {
+      if (!runStartedAt) return;
+      runTimer.textContent = `${((performance.now() - runStartedAt) / 1000).toFixed(1)}s`;
+    }
+    function stopRunTimer() {
+      updateRunTimer();
+      if (runTimerId) clearInterval(runTimerId);
+      runTimerId = null;
+      runStartedAt = 0;
+    }
     async function startRun() {
       reset();
       ask.disabled = true;
       stop.disabled = false;
       runIndicator.classList.add("visible");
+      startRunTimer();
       document.getElementById("modeBadge").textContent =
         `${document.getElementById("orchestration").value} / ${document.getElementById("execution_backend").value} / ${document.getElementById("source_mode").value}`;
       const payload = {
@@ -2292,6 +2320,7 @@ INDEX_HTML = """<!doctype html>
         ask.disabled = false;
         stop.disabled = true;
         runIndicator.classList.remove("visible");
+        stopRunTimer();
         source.close();
         document.getElementById("reasoningStatus").textContent = "complete";
         if (done.status === "succeeded") renderAnswer(done.result);
@@ -2305,6 +2334,7 @@ INDEX_HTML = """<!doctype html>
       ask.disabled = false;
       stop.disabled = true;
       runIndicator.classList.remove("visible");
+      stopRunTimer();
       onProgress({stage: "input", status: "stopped", message: "Stopped watching. The server job may still finish.", metadata: {}});
     });
   </script>

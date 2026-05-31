@@ -1033,16 +1033,111 @@ INDEX_HTML = """<!doctype html>
     .thinking {
       flex: 1;
       min-height: 0;
-      overflow: auto;
+      overflow: hidden;
       border: 1px solid rgba(94,230,201,.10);
       border-radius: 12px;
       background: linear-gradient(180deg, rgba(3,8,12,.95), rgba(5,10,15,.88));
       color: var(--text-muted);
-      padding: 12px;
-      font: 13px/1.55 var(--font-mono);
-      white-space: pre-wrap;
+      padding: 10px;
       mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 100%);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.025), inset 0 0 40px rgba(94,230,201,.025);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .thought-stream {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 4px 2px 2px;
+    }
+    .thought-card {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) 8px;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,.075);
+      border-radius: 10px;
+      padding: 8px 9px;
+      min-height: 42px;
+      background: rgba(255,255,255,.035);
+      color: var(--text-muted);
+      font: 12px/1.25 var(--font-ui);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+      animation: tileIn .28s var(--ease) both;
+      transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    .thought-card:hover, .thought-card.active {
+      border-color: rgba(94,230,201,.32);
+      background: rgba(94,230,201,.065);
+      box-shadow: 0 0 24px rgba(94,230,201,.08), inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .thought-card .icon {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(94,230,201,.18);
+      border-radius: 999px;
+      color: var(--accent);
+      background: rgba(94,230,201,.07);
+      font: 13px var(--font-mono);
+    }
+    .thought-card .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-weight: 650;
+    }
+    .thought-card .sub {
+      margin-top: 2px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-faint);
+      font: 10px var(--font-mono);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(94,230,201,.7);
+    }
+    .thought-card.failed .status-dot { background: var(--accent-low); box-shadow: 0 0 12px rgba(255,92,122,.7); }
+    .thought-card.updated .status-dot { background: var(--accent-mid); box-shadow: 0 0 12px rgba(244,193,82,.58); }
+    .raw-reasoning {
+      flex: 0 0 auto;
+      margin-top: 0;
+      border-top: 1px solid rgba(255,255,255,.06);
+      padding-top: 7px;
+      color: var(--text-faint);
+    }
+    .raw-reasoning summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font: 10px var(--font-ui);
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .raw-reasoning-body {
+      max-height: 120px;
+      margin-top: 8px;
+      overflow: auto;
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 10px;
+      padding: 9px;
+      background: rgba(0,0,0,.24);
+      color: var(--text-muted);
+      font: 12px/1.5 var(--font-mono);
+      white-space: pre-wrap;
     }
     .tool-chip {
       display: inline-block;
@@ -1081,6 +1176,7 @@ INDEX_HTML = """<!doctype html>
     .node circle { stroke: rgba(255,255,255,.82); stroke-width: 1.4px; transition: fill .6s var(--ease), filter .6s var(--ease), stroke .6s var(--ease); }
     .node text { font-size: 10.5px; font-weight: 600; pointer-events: none; fill: rgba(232,237,244,.84); paint-order: stroke; stroke: rgba(7,10,15,.88); stroke-width: 3px; }
     .node.pulse circle { animation: nodePulse .72s var(--ease); stroke: var(--accent-warn); }
+    .node.highlight circle { stroke: var(--accent); stroke-width: 3px; filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 26px var(--accent)) !important; }
     @keyframes nodePulse { 0% { stroke-width: 9px; filter: drop-shadow(0 0 4px var(--accent-warn)) drop-shadow(0 0 30px var(--accent-warn)); } 100% { stroke-width: 1.4px; } }
     .toast {
       position: absolute;
@@ -1258,7 +1354,13 @@ INDEX_HTML = """<!doctype html>
     <section class="cockpit">
       <aside class="panel pane">
         <div class="pane-head"><h2>Thinking</h2><span class="badge" id="reasoningStatus">waiting</span></div>
-        <div class="thinking" id="thinking"><span class="cursor"></span></div>
+        <div class="thinking" id="thinking">
+          <div class="thought-stream" id="thoughtStream"></div>
+          <details class="raw-reasoning" id="rawReasoningWrap">
+            <summary>Raw reasoning</summary>
+            <div class="raw-reasoning-body" id="rawReasoning"><span class="cursor"></span></div>
+          </details>
+        </div>
       </aside>
       <section class="panel pane">
         <div class="pane-head"><h2>Belief Graph</h2><span class="badge" id="graphStatus">0 nodes</span></div>
@@ -1294,6 +1396,8 @@ INDEX_HTML = """<!doctype html>
     const ask = document.getElementById("ask");
     const stop = document.getElementById("stop");
     const thinking = document.getElementById("thinking");
+    const thoughtStream = document.getElementById("thoughtStream");
+    const rawReasoning = document.getElementById("rawReasoning");
     const log = document.getElementById("log");
     const workers = document.getElementById("workers");
     const toast = document.getElementById("toast");
@@ -1324,7 +1428,8 @@ INDEX_HTML = """<!doctype html>
     function reset() {
       pendingText = "";
       thinkingLines = 0;
-      thinking.innerHTML = '<span class="cursor"></span>';
+      thoughtStream.innerHTML = "";
+      rawReasoning.innerHTML = '<span class="cursor"></span>';
       log.innerHTML = "";
       workers.innerHTML = "";
       workerById.clear();
@@ -1345,43 +1450,33 @@ INDEX_HTML = """<!doctype html>
       markPhase(event.stage);
       const kind = event.kind || event.metadata?.kind || "";
       if (kind === "reasoning.delta") appendReasoning(event.metadata?.text || "");
-      else if (kind === "tool.call") addToolChip(event.metadata?.name || event.stage);
-      else if (kind === "tool.output") addToolChip(`${event.metadata?.name || "tool"} done`);
+      else if (kind === "tool.call") addToolChip(event.metadata?.name || event.stage, event);
+      else if (kind === "tool.output") addToolChip(`${event.metadata?.name || "tool"} done`, event);
       else if (kind === "fanout.spawn") spawnWorkers(Number(event.metadata?.tasks || 0), event.metadata?.backend || "local");
       else if (kind === "fanout.task") settleWorker(event.metadata?.task_id, event.metadata?.task_status || event.status);
       else if (kind === "node.add") addGraphNode(event.metadata);
       else if (kind === "edge.add") addGraphEdge(event.metadata);
       else if (kind === "node.confidence") updateConfidence(event.metadata);
       else if (kind === "counter") updateCounters(event.metadata || {});
-      if (!kind && event.stage?.startsWith("tool.")) addToolChip(event.stage.replace("tool.", ""));
+      if (!kind && event.stage?.startsWith("tool.")) addToolChip(event.stage.replace("tool.", ""), event);
+      addThoughtCard(event);
     }
     function appendReasoning(text) {
       if (!text) return;
       const display = formatReasoningChunk(text);
       if (!display) return;
-      pendingText += display;
+      appendRawReasoning(display);
       document.getElementById("reasoningStatus").textContent = "streaming";
-      if (!textFrame) textFrame = requestAnimationFrame(releaseThinkingText);
     }
-    function releaseThinkingText() {
-      if (!pendingText) {
-        textFrame = null;
-        return;
-      }
-      const chunk = pendingText.slice(0, 80);
-      pendingText = pendingText.slice(80);
-      appendThinkingNode(document.createTextNode(chunk), chunk);
-      thinking.scrollTop = thinking.scrollHeight;
-      textFrame = requestAnimationFrame(releaseThinkingText);
-    }
-    function appendThinkingNode(node, text = "") {
-      thinking.insertBefore(node, thinking.querySelector(".cursor"));
+    function appendRawReasoning(text) {
+      rawReasoning.insertBefore(document.createTextNode(text), rawReasoning.querySelector(".cursor"));
       thinkingLines += Math.max(1, String(text).split("\\n").length - 1);
       trimThinking();
+      rawReasoning.scrollTop = rawReasoning.scrollHeight;
     }
     function trimThinking() {
-      while (thinkingLines > 400 && thinking.firstChild && !thinking.firstChild.classList?.contains("cursor")) {
-        const first = thinking.firstChild;
+      while (thinkingLines > 240 && rawReasoning.firstChild && !rawReasoning.firstChild.classList?.contains("cursor")) {
+        const first = rawReasoning.firstChild;
         thinkingLines -= Math.max(1, (first.textContent || "").split("\\n").length - 1);
         first.remove();
       }
@@ -1440,14 +1535,147 @@ INDEX_HTML = """<!doctype html>
       if (text.length > 80) text = `${text.slice(0, 77)}...`;
       return quoted ? `"${text}"` : text;
     }
-    function addToolChip(name) {
-      const chip = document.createElement("span");
-      chip.className = "tool-chip";
-      chip.textContent = name;
-      appendThinkingNode(chip, "\\n");
-      appendThinkingNode(document.createTextNode(" "), " ");
-      thinking.scrollTop = thinking.scrollHeight;
+    function addToolChip(name, event = null) {
+      void name;
+      void event;
       document.getElementById("reasoningStatus").textContent = "tools active";
+    }
+    function addThoughtCard(event) {
+      const card = describeThought(event);
+      if (!card) return;
+      const div = document.createElement("div");
+      div.className = `thought-card ${card.statusClass || ""}`;
+      if (card.nodeId) div.dataset.nodeId = card.nodeId;
+      div.innerHTML = `
+        <span class="icon">${escapeHtml(card.icon)}</span>
+        <div>
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="sub">${escapeHtml(card.sub || "")}</div>
+        </div>
+        <span class="status-dot"></span>
+      `;
+      if (card.nodeId) {
+        div.addEventListener("mouseenter", () => setNodeHighlight(card.nodeId, true));
+        div.addEventListener("mouseleave", () => setNodeHighlight(card.nodeId, false));
+      }
+      thoughtStream.appendChild(div);
+      while (thoughtStream.children.length > 40) thoughtStream.firstElementChild?.remove();
+      thoughtStream.scrollTop = thoughtStream.scrollHeight;
+      document.getElementById("reasoningStatus").textContent = "tools active";
+      if (card.nodeId) flashNode(card.nodeId);
+    }
+    function describeThought(event) {
+      const kind = event.kind || event.metadata?.kind || "";
+      const meta = event.metadata || {};
+      if (kind === "reasoning.delta" || kind === "edge.add") return null;
+      if (kind === "tool.call") {
+        return {
+          icon: "▸",
+          label: toolLabel(meta.name || event.stage, "call"),
+          sub: meta.args_preview || event.stage || "",
+          nodeId: nodeIdFromEvent(event),
+        };
+      }
+      if (kind === "tool.output") {
+        return {
+          icon: "✓",
+          label: toolLabel(meta.name || event.stage, "done"),
+          sub: meta.summary || event.message || "",
+          nodeId: nodeIdFromEvent(event),
+        };
+      }
+      if (kind === "node.add") {
+        return {
+          icon: "+",
+          label: `${titleCase(meta.node_kind || "node")}: ${shortLabel(meta.label || meta.id)}`,
+          sub: meta.id || "",
+          nodeId: meta.id,
+        };
+      }
+      if (kind === "node.confidence") {
+        const from = formatConfidence(meta.from);
+        const to = formatConfidence(meta.to);
+        const down = Number(meta.to) < Number(meta.from);
+        return {
+          icon: down ? "↓" : "↑",
+          label: `${meta.id || "Node"} confidence ${from} → ${to}`,
+          sub: down ? "Self-correction applied" : "Support increased",
+          nodeId: meta.id,
+          statusClass: "updated",
+        };
+      }
+      if (kind === "fanout.spawn") {
+        return {icon: "⇉", label: `${meta.tasks || 0} ${meta.backend || "local"} workers dispatched`, sub: event.stage || ""};
+      }
+      if (kind === "fanout.task") {
+        return {
+          icon: meta.task_status === "failed" || event.status === "failed" ? "!" : "✓",
+          label: `${meta.task_id || "Worker"} ${meta.task_status || event.status}`,
+          sub: meta.task_type || event.stage || "",
+          statusClass: meta.task_status === "failed" || event.status === "failed" ? "failed" : "",
+        };
+      }
+      if (kind === "counter") return {icon: "#", label: "Research counters updated", sub: counterSummary(meta)};
+      if (event.stage === "input") return {icon: "?", label: "Question received", sub: event.metadata?.thesis_text || ""};
+      if (event.stage === "answer") return {icon: "✓", label: "Answer ready", sub: event.message || ""};
+      if (event.stage === "fallback") return {icon: "↳", label: "Recovered inspectable graph", sub: event.message || ""};
+      if (event.stage === "error" || event.status === "failed") {
+        return {icon: "!", label: event.message || "Run failed", sub: event.stage || "", statusClass: "failed"};
+      }
+      if (event.stage === "live_harness" || event.stage === "live_sdk") {
+        return {icon: "•", label: event.message || event.stage, sub: event.status || ""};
+      }
+      return null;
+    }
+    function toolLabel(name, mode) {
+      const cleaned = String(name || "tool").replace(/^tool\\./, "");
+      const labels = {
+        run_deterministic_research_loop_tool: "Running canonical research loop",
+        retrieve_sources_tool: "Retrieving sources",
+        score_retrieval_tool: "Scoring source relevance",
+        execute_source_research_tasks_tool: "Dispatching research workers",
+        extract_evidence_tool: "Extracting evidence",
+        cross_check_evidence_tool: "Cross-checking evidence",
+        detect_invalid_leaps_tool: "Finding unsafe inference leaps",
+        update_beliefs_tool: "Updating belief graph",
+        propose_decisive_tests_tool: "Drafting decisive tests",
+        run_decisive_test_verifiers_tool: "Running verifier tests",
+        generate_evals_from_failures_tool: "Writing evals from failures",
+        build_eval_workshop_tool: "Assembling eval workshop",
+        record_observability_tool: "Recording Raindrop trace",
+      };
+      const label = labels[cleaned] || titleCase(cleaned.replace(/_tool$/, "").replace(/_/g, " "));
+      return mode === "done" ? `${label} completed` : label;
+    }
+    function nodeIdFromEvent(event) {
+      const meta = event.metadata || {};
+      const direct = meta.id || meta.node_id || meta.assumption_id || meta.evidence_id || meta.source_id;
+      if (direct) return String(direct);
+      const text = [meta.args_preview, meta.summary, event.message].filter(Boolean).join(" ");
+      return text.match(/\\b(A\\d+|evidence_[\\w-]+|source_[\\w-]+|test_[\\w-]+|eval_[\\w-]+)\\b/)?.[1] || "";
+    }
+    function flashNode(id) {
+      if (!id) return;
+      const group = nodeLayer.querySelector(`[data-id="${cssEscape(id)}"]`);
+      if (!group) return;
+      group.classList.remove("pulse");
+      group.getBoundingClientRect();
+      group.classList.add("pulse");
+      setTimeout(() => group.classList.remove("pulse"), 820);
+    }
+    function setNodeHighlight(id, enabled) {
+      const group = nodeLayer.querySelector(`[data-id="${cssEscape(id)}"]`);
+      if (group) group.classList.toggle("highlight", enabled);
+    }
+    function formatConfidence(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(2) : "?";
+    }
+    function counterSummary(meta) {
+      return Object.entries(meta || {}).map(([key, value]) => `${key}: ${value}`).join(" · ");
+    }
+    function titleCase(value) {
+      return String(value || "").replace(/\\b\\w/g, char => char.toUpperCase());
     }
     function addGraphNode(meta) {
       if (!meta?.id || nodeById.has(meta.id)) return;
@@ -1476,9 +1704,7 @@ INDEX_HTML = """<!doctype html>
       const node = nodeById.get(id);
       node.confidence = Number(meta.to ?? node.confidence);
       updateGraph();
-      const group = nodeLayer.querySelector(`[data-id="${cssEscape(id)}"]`);
-      if (group) group.classList.add("pulse");
-      setTimeout(() => nodeLayer.querySelectorAll("g.node").forEach(el => el.classList.remove("pulse")), 800);
+      flashNode(id);
       if (Number(meta.to) < Number(meta.from)) showToast("⚠ Reclassified: benchmark wins ≠ prospective validation");
     }
     function updateGraph() {

@@ -53,6 +53,7 @@ def _new_job(thesis_text: str, config: dict[str, Any]) -> str:
             "thesis_text": thesis_text,
             "config": config,
             "events": [],
+            "next_event_index": 1,
             "result": None,
             "error": None,
         }
@@ -73,7 +74,8 @@ def _append_event(job_id: str, event: dict[str, Any]) -> None:
         job = RUNS[job_id]
         if job["status"] in {"succeeded", "failed"}:
             return
-        normalized["index"] = len(job["events"]) + 1
+        normalized["index"] = job["next_event_index"]
+        job["next_event_index"] += 1
         job["events"].append(normalized)
         if len(job["events"]) > MAX_STORED_EVENTS_PER_JOB:
             job["events"] = job["events"][-MAX_STORED_EVENTS_PER_JOB:]
@@ -129,7 +131,7 @@ async def run_events(request: Request) -> StreamingResponse:
     job_id = request.path_params["job_id"]
 
     async def event_stream():
-        sent_count = 0
+        last_sent_index = 0
         while True:
             with RUN_LOCK:
                 job = RUNS.get(job_id)
@@ -141,9 +143,10 @@ async def run_events(request: Request) -> StreamingResponse:
                 result = job["result"]
                 error = job["error"]
 
-            for event in events[sent_count:]:
+            new_events = [event for event in events if event["index"] > last_sent_index]
+            for event in new_events:
                 yield _sse("progress", event)
-            sent_count = len(events)
+                last_sent_index = event["index"]
 
             if status in {"succeeded", "failed"}:
                 yield _sse(

@@ -887,6 +887,22 @@ INDEX_HTML = """<!doctype html>
       flex-wrap: wrap;
     }
     .button-group { display: flex; gap: 8px; align-items: center; }
+    .run-indicator {
+      display: none;
+      align-items: center;
+      min-height: 36px;
+      border: 1px solid rgba(94,230,201,.18);
+      border-radius: 999px;
+      padding: 0 10px;
+      background: rgba(94,230,201,.06);
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 0 18px rgba(94,230,201,.08);
+    }
+    .run-indicator.visible { display: inline-flex; }
     textarea {
       display: block;
       width: 100%;
@@ -1357,6 +1373,7 @@ INDEX_HTML = """<!doctype html>
             <div class="button-group">
               <button class="primary" id="ask">Ask Pragmatic</button>
               <button id="stop" disabled>Stop</button>
+              <span class="run-indicator" id="runIndicator"><span class="spinner"></span>Running</span>
             </div>
             <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
           </div>
@@ -1430,6 +1447,7 @@ INDEX_HTML = """<!doctype html>
   <script>
     const ask = document.getElementById("ask");
     const stop = document.getElementById("stop");
+    const runIndicator = document.getElementById("runIndicator");
     const thinking = document.getElementById("thinking");
     const thoughtStream = document.getElementById("thoughtStream");
     const rawReasoning = document.getElementById("rawReasoning");
@@ -2221,6 +2239,7 @@ INDEX_HTML = """<!doctype html>
       reset();
       ask.disabled = true;
       stop.disabled = false;
+      runIndicator.classList.add("visible");
       document.getElementById("modeBadge").textContent =
         `${document.getElementById("orchestration").value} / ${document.getElementById("execution_backend").value} / ${document.getElementById("source_mode").value}`;
       const payload = {
@@ -2250,6 +2269,7 @@ INDEX_HTML = """<!doctype html>
         const done = JSON.parse(message.data);
         ask.disabled = false;
         stop.disabled = true;
+        runIndicator.classList.remove("visible");
         source.close();
         document.getElementById("reasoningStatus").textContent = "complete";
         if (done.status === "succeeded") renderAnswer(done.result);
@@ -2262,6 +2282,7 @@ INDEX_HTML = """<!doctype html>
       if (source) source.close();
       ask.disabled = false;
       stop.disabled = true;
+      runIndicator.classList.remove("visible");
       onProgress({stage: "input", status: "stopped", message: "Stopped watching. The server job may still finish.", metadata: {}});
     });
   </script>

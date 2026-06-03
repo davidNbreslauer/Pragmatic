@@ -39,12 +39,24 @@ def test_realtime_defaults_are_offline_playground_safe():
 
     assert config["orchestration"] == "scripted_sdk"
     assert config["execution_backend"] == "local"
+    assert config["use_modal"] is False
     assert config["source_mode"] == "prepared"
+    assert config["observability_mode"] == "local"
+    assert config["use_raindrop"] is False
     assert config["allow_live_web_search"] is False
     assert config["live_sdk_enabled"] is False
     assert config["live_dry_run"] is True
     assert config["require_demo_proof"] is False
     assert config["timeout_seconds"] == 60
+
+
+def test_realtime_switches_enable_modal_and_raindrop():
+    config = _normalize_config({"use_modal": True, "use_raindrop": True})
+
+    assert config["execution_backend"] == "modal"
+    assert config["use_modal"] is True
+    assert config["observability_mode"] == "raindrop"
+    assert config["use_raindrop"] is True
 
 
 def test_build_bottom_line_populates_verdict_and_next_test():

@@ -36,7 +36,7 @@ from pragmatic.schemas import (
 )
 
 
-DEFAULT_THESIS = "Graph-based AI scientist systems can accelerate real materials discovery."
+DEFAULT_THESIS = "Spider silk for bullet proof vests"
 ResearchLoopObserver = Callable[[ResearchState, str], None]
 _RESEARCH_LOOP_OBSERVER: ContextVar[ResearchLoopObserver | None] = ContextVar(
     "research_loop_observer",
@@ -70,7 +70,7 @@ def run_research_loop(
     raindrop_fallback: bool = True,
 ) -> ResearchState:
     resolved_backend = _resolve_execution_backend(execution_backend, extraction_mode)
-    state = ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery"))
+    state = ResearchState(thesis=Thesis(text=thesis_text, domain=_topic_phrase(thesis_text)))
     _trace(
         state,
         "initialize",
@@ -349,122 +349,11 @@ def run_research_loop(
 
 
 def decompose_thesis(thesis_text: str) -> list[Assumption]:
-    if not _is_default_ai_scientist_thesis(thesis_text):
-        return _decompose_generic_thesis(thesis_text)
-
-    return [
-        Assumption(
-            id="A1",
-            text="Graph memory captures useful scientific structure.",
-            why_it_matters="The thesis depends on graph state representing more than a bag of retrieved text.",
-            evidence_needed=[
-                "Ablations showing graph structure improves scientific reasoning.",
-                "Examples where graph relations preserve useful domain structure.",
-            ],
-        ),
-        Assumption(
-            id="A2",
-            text="The system retrieves better context than standard RAG.",
-            why_it_matters="Discovery claims need an advantage over simpler retrieval baselines.",
-            evidence_needed=[
-                "Head-to-head comparison against strong non-graph RAG.",
-                "Recall or answer-quality gains on scientific corpora.",
-            ],
-        ),
-        Assumption(
-            id="A3",
-            text="The system generates non-obvious hypotheses.",
-            why_it_matters="Acceleration requires more than restating known literature.",
-            evidence_needed=[
-                "Blinded expert novelty ratings.",
-                "Time-split evidence that generated hypotheses were not already known.",
-            ],
-        ),
-        Assumption(
-            id="A4",
-            text="The hypotheses are testable.",
-            why_it_matters="Untestable hypotheses cannot drive real discovery.",
-            evidence_needed=[
-                "Operational predictions with measurable outcomes.",
-                "Experimental or simulator protocols tied to hypotheses.",
-            ],
-        ),
-        Assumption(
-            id="A5",
-            text="Benchmarks correlate with real scientific value.",
-            why_it_matters="Benchmark gains are only useful if they predict discovery outcomes.",
-            evidence_needed=[
-                "Evidence connecting benchmark performance to downstream scientific validation.",
-                "Analysis of benchmark construct validity.",
-            ],
-        ),
-        Assumption(
-            id="A6",
-            text="There is prospective validation.",
-            why_it_matters="The strongest discovery claim requires forward-looking validation.",
-            evidence_needed=[
-                "Predictions made before validation.",
-                "Independent experimental or simulator confirmation.",
-            ],
-        ),
-        Assumption(
-            id="A7",
-            text="The system beats strong baselines.",
-            why_it_matters="A complex graph-agent system must outperform simpler alternatives.",
-            evidence_needed=[
-                "Comparisons against standard RAG, expert search, and human baselines.",
-                "Matched budget and tool access.",
-            ],
-        ),
-        Assumption(
-            id="A8",
-            text="Results generalize beyond cherry-picked examples.",
-            why_it_matters="A few demos do not establish broad discovery acceleration.",
-            evidence_needed=[
-                "Multiple domains or held-out tasks.",
-                "Negative controls and failure analysis.",
-            ],
-        ),
-    ]
+    return _decompose_generic_thesis(thesis_text)
 
 
 def generate_initial_questions(state: ResearchState) -> list[ResearchQuestion]:
-    if (
-        not _is_default_ai_scientist_thesis(state.thesis.text)
-        and not _is_demo_ai_scientist_assumptions(state.assumptions)
-    ):
-        return _generate_generic_questions(state)
-
-    return [
-        ResearchQuestion(
-            id="Q1",
-            assumption_ids=["A1", "A2"],
-            question="Do graph-based systems retrieve or organize scientific context better than standard RAG?",
-            query="graph RAG scientific context retrieval ablation",
-            priority=2,
-        ),
-        ResearchQuestion(
-            id="Q2",
-            assumption_ids=["A3", "A4"],
-            question="Do AI-scientist systems generate novel, testable materials hypotheses?",
-            query="AI scientist generated hypotheses novelty testability materials",
-            priority=1,
-        ),
-        ResearchQuestion(
-            id="Q3",
-            assumption_ids=["A5", "A6"],
-            question="Does benchmark performance imply prospective materials discovery?",
-            query="scientific discovery benchmark prospective validation proxy evidence",
-            priority=1,
-        ),
-        ResearchQuestion(
-            id="Q4",
-            assumption_ids=["A7", "A8"],
-            question="Do graph-agent results beat strong baselines and generalize beyond selected examples?",
-            query="graph agent baseline ablation generalization scientific discovery",
-            priority=2,
-        ),
-    ]
+    return _generate_generic_questions(state)
 
 
 def _decompose_generic_thesis(thesis_text: str) -> list[Assumption]:
@@ -609,15 +498,6 @@ def _top_terms(value: str, *, limit: int) -> list[str]:
         if token not in deduped:
             deduped.append(token)
     return deduped[:limit]
-
-
-def _is_default_ai_scientist_thesis(thesis_text: str) -> bool:
-    normalized = thesis_text.lower()
-    return "graph-based ai scientist" in normalized and "materials discovery" in normalized
-
-
-def _is_demo_ai_scientist_assumptions(assumptions: list[Assumption]) -> bool:
-    return any("graph memory captures" in assumption.text.lower() for assumption in assumptions)
 
 
 def retrieve_sources(questions: list[ResearchQuestion], corpus: list[Source]) -> list[Source]:

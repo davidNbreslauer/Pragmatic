@@ -18,7 +18,7 @@ from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from pragmatic import ResearchManager
-from pragmatic.corpus import AI_SCIENTIST_CORPUS_PATH, SPIDER_SILK_CORPUS_PATH
+from pragmatic.corpus import SPIDER_SILK_CORPUS_PATH
 from pragmatic.live_harness import run_live_harness_sync
 from pragmatic.replay import run_replay_demo
 from pragmatic.schemas import LiveRunResult, ResearchState
@@ -477,12 +477,18 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
     corpus_path = ""
     if corpus_choice == "spider_silk":
         corpus_path = str(SPIDER_SILK_CORPUS_PATH)
-    elif corpus_choice == "ai_scientist":
-        corpus_path = str(AI_SCIENTIST_CORPUS_PATH)
+    execution_backend = str(raw.get("execution_backend") or DEFAULT_EXECUTION_BACKEND)
+    if "use_modal" in raw:
+        execution_backend = "modal" if bool(raw.get("use_modal")) else "local"
+    observability_mode = str(raw.get("observability_mode") or DEFAULT_OBSERVABILITY_MODE)
+    if "use_raindrop" in raw:
+        observability_mode = "raindrop" if bool(raw.get("use_raindrop")) else "local"
     return {
         "orchestration": str(raw.get("orchestration") or DEFAULT_ORCHESTRATION),
-        "execution_backend": str(raw.get("execution_backend") or DEFAULT_EXECUTION_BACKEND),
-        "observability_mode": str(raw.get("observability_mode") or DEFAULT_OBSERVABILITY_MODE),
+        "execution_backend": execution_backend,
+        "use_modal": execution_backend == "modal",
+        "observability_mode": observability_mode,
+        "use_raindrop": observability_mode == "raindrop",
         "source_mode": str(raw.get("source_mode") or DEFAULT_SOURCE_MODE),
         "corpus_choice": corpus_choice,
         "corpus_path": corpus_path,
@@ -1036,6 +1042,59 @@ INDEX_HTML = """<!doctype html>
       font-size: 12px;
       outline: none;
     }
+    .toggle {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-control);
+      padding: 7px 8px;
+      background: rgba(255,255,255,.045);
+      color: var(--text-muted);
+      font-size: 12px;
+      user-select: none;
+    }
+    .toggle input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .toggle-track {
+      position: relative;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(148,159,180,.18);
+      border: 1px solid rgba(148,159,180,.22);
+      transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .toggle-track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(226,232,240,.88);
+      transition: transform .18s var(--ease), background .18s ease;
+    }
+    .toggle input:checked + .toggle-track {
+      background: rgba(94,230,201,.24);
+      border-color: rgba(94,230,201,.55);
+      box-shadow: 0 0 18px rgba(94,230,201,.16);
+    }
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(16px);
+      background: var(--accent);
+    }
+    .toggle input:focus-visible + .toggle-track {
+      box-shadow: 0 0 0 3px rgba(94,230,201,.11), 0 0 24px rgba(94,230,201,.12);
+    }
     details { margin-top: 7px; color: var(--text-muted); font-size: 12px; }
     details .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
@@ -1470,9 +1529,10 @@ INDEX_HTML = """<!doctype html>
           <summary>Run controls</summary>
           <div class="grid">
             <label>Orchestration<select id="orchestration"><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option><option value="live_sdk">live_sdk</option></select></label>
-            <label>Execution<select id="execution_backend"><option value="local">local</option><option value="modal">modal</option></select></label>
+            <label class="toggle"><input id="use_modal" type="checkbox" /><span class="toggle-track" aria-hidden="true"></span><span>Use Modal</span></label>
+            <label class="toggle"><input id="use_raindrop" type="checkbox" /><span class="toggle-track" aria-hidden="true"></span><span>Use Raindrop</span></label>
             <label>Sources<select id="source_mode"><option value="prepared">prepared</option><option value="web">live web</option></select></label>
-            <label>Corpus<select id="corpus_choice"><option value="auto">auto</option><option value="spider_silk">Spider silk (prepared)</option><option value="ai_scientist">AI scientist (prepared)</option></select></label>
+            <label>Corpus<select id="corpus_choice"><option value="auto">auto</option><option value="spider_silk">Spider silk (prepared)</option></select></label>
             <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
             <label>Timeout seconds<input id="timeout_seconds" type="number" value="60" min="5" max="600" /></label>
             <label>Max turns<input id="max_turns" type="number" value="3" min="1" max="20" /></label>
@@ -2508,15 +2568,19 @@ INDEX_HTML = """<!doctype html>
       setActivity("Starting Pragmatic run", "Opening the event stream.", true);
       startRunTimer();
       const orchestration = document.getElementById("orchestration").value;
-      const executionBackend = document.getElementById("execution_backend").value;
+      const useModal = document.getElementById("use_modal").checked;
+      const useRaindrop = document.getElementById("use_raindrop").checked;
+      const executionBackend = useModal ? "modal" : "local";
+      const observabilityMode = useRaindrop ? "raindrop" : "local";
       const sourceMode = document.getElementById("source_mode").value;
       document.getElementById("modeBadge").textContent =
-        `${orchestration} / ${executionBackend} / ${sourceMode}`;
+        `${orchestration} / ${executionBackend} / ${sourceMode} / ${useRaindrop ? "Raindrop" : "local Workshop"}`;
       const payload = {
         thesis_text: document.getElementById("question").value,
         config: {
           orchestration: orchestration,
           execution_backend: executionBackend,
+          use_modal: useModal,
           source_mode: sourceMode,
           corpus_choice: document.getElementById("corpus_choice").value,
           model: document.getElementById("model").value,
@@ -2528,7 +2592,8 @@ INDEX_HTML = """<!doctype html>
           live_sdk_enabled: orchestration === "live_sdk",
           live_dry_run: orchestration !== "live_sdk",
           allow_live_web_search: sourceMode === "web",
-          observability_mode: "local"
+          observability_mode: observabilityMode,
+          use_raindrop: useRaindrop
         }
       };
       const response = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});

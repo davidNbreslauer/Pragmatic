@@ -70,9 +70,9 @@ EvalWorkshopLinkType = Literal[
     "replay_eval_to_outcome",
 ]
 RegressionEvalKind = Literal[
-    "benchmark_proxy_boundary",
+    "proxy_application_boundary",
     "a6_requires_direct_validation",
-    "company_claim_anecdotal",
+    "limiting_evidence_preserved",
     "conflict_workshop_links",
     "replay_confidence_not_increased",
 ]

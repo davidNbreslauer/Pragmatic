@@ -7,10 +7,9 @@ from pathlib import Path
 from pragmatic.schemas import ResearchQuestion, RetrievalScore, Source
 
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-DEFAULT_CORPUS_PATH = DATA_DIR / "ai_scientist_sources.json"
-AI_SCIENTIST_CORPUS_PATH = DEFAULT_CORPUS_PATH
+DATA_DIR = Path(__file__).resolve().parent / "data"
 SPIDER_SILK_CORPUS_PATH = DATA_DIR / "spider_silk_sources.json"
+DEFAULT_CORPUS_PATH = SPIDER_SILK_CORPUS_PATH
 STOPWORDS = {
     "a",
     "against",
@@ -52,8 +51,6 @@ def resolve_corpus_path(thesis_text: str, corpus_path: str | Path | None = None)
     thesis = thesis_text.lower()
     if any(term in thesis for term in ["spider", "silk", "bullet", "vest"]):
         return SPIDER_SILK_CORPUS_PATH
-    if any(term in thesis for term in ["ai", "scientist", "materials"]):
-        return AI_SCIENTIST_CORPUS_PATH
     return DEFAULT_CORPUS_PATH
 
 
@@ -150,7 +147,6 @@ def _tokenize(value: str) -> set[str]:
 def _normalize_token(term: str) -> str:
     aliases = {
         "benchmarks": "benchmark",
-        "discoverybench": "benchmark",
         "discoveries": "discovery",
         "experimentation": "experiment",
         "experiments": "experiment",

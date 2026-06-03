@@ -456,7 +456,7 @@ class ResearchManager:
         _require_agents_sdk()
         agent = self.build_agent()
         tools = {tool.name: tool for tool in agent.tools}
-        state = ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery"))
+        state = ResearchState(thesis=Thesis(text=thesis_text, domain=thesis_text[:96]))
         _append_agent_trace(
             state,
             "OpenAI Agents SDK ResearchManager initialized specialist orchestration.",
@@ -846,7 +846,7 @@ class ResearchManager:
             f"Thesis: {thesis_text}"
         )
         partial_holder: dict[str, Any] = {
-            "state": ResearchState(thesis=Thesis(text=thesis_text, domain="materials discovery")),
+            "state": ResearchState(thesis=Thesis(text=thesis_text, domain=thesis_text[:96])),
             "callback": partial_state_callback,
         }
         token = _PROGRESS_CALLBACK.set(progress_callback)

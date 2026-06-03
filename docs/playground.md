@@ -36,6 +36,8 @@ The default run is:
 - execution: `local`
 - sources: `prepared`
 - observability: local Workshop bundle
+- `Use Modal`: off
+- `Use Raindrop`: off
 
 That means the first click should not make OpenAI API calls, run Modal, or perform live web search.
 

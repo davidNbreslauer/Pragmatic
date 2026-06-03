@@ -37,71 +37,11 @@ def run_mock_verifier(
     evidence_items: list[EvidenceItem],
     evidence_conflicts: list[EvidenceConflict],
 ) -> VerifierResult:
-    if not any("prospective materials-discovery" in criterion.lower() for criterion in decisive_test.success_criteria):
-        return _run_generic_verifier(
-            decisive_test,
-            sources,
-            evidence_items,
-            evidence_conflicts,
-        )
-
-    source_by_id = {source.id: source for source in sources}
-    direct_prospective_items = [
-        item
-        for item in evidence_items
-        if "A6" in item.assumption_ids
-        and item.evidence_type == "direct"
-        and source_by_id.get(item.source_id) is not None
-        and source_by_id[item.source_id].source_type not in {"benchmark", "company_claim"}
-    ]
-    high_validation_conflicts = [
-        conflict
-        for conflict in evidence_conflicts
-        if "A6" in conflict.affected_assumption_ids
-        and conflict.severity == "high"
-    ]
-
-    if direct_prospective_items and not high_validation_conflicts:
-        return VerifierResult(
-            id=f"verifier_{decisive_test.id}",
-            decisive_test_id=decisive_test.id,
-            status="pass",
-            affected_assumption_ids=decisive_test.would_resolve,
-            confidence_delta=0.12,
-            rationale=(
-                "The evidence contains independent direct prospective-validation support "
-                "and no high-severity validation conflict."
-            ),
-            passed_criteria=decisive_test.success_criteria,
-            evidence_item_ids=[item.id for item in direct_prospective_items],
-        )
-
-    failed_criteria = [
-        criterion
-        for criterion in decisive_test.success_criteria
-        if "prospectively validated" in criterion.lower()
-        or "frozen before" in criterion.lower()
-        or "matched budget" in criterion.lower()
-    ]
-    return VerifierResult(
-        id=f"verifier_{decisive_test.id}",
-        decisive_test_id=decisive_test.id,
-        status="fail",
-        affected_assumption_ids=decisive_test.would_resolve,
-        confidence_delta=-0.10,
-        rationale=(
-            "The current corpus does not satisfy the decisive prospective-discovery test: "
-            "there is no independent direct validation item, and high-severity A6 conflicts remain."
-        ),
-        passed_criteria=[],
-        failed_criteria=failed_criteria or decisive_test.success_criteria,
-        evidence_item_ids=sorted(
-            {
-                evidence_item_id
-                for conflict in high_validation_conflicts
-                for evidence_item_id in conflict.evidence_item_ids
-            }
-        ),
+    return _run_generic_verifier(
+        decisive_test,
+        sources,
+        evidence_items,
+        evidence_conflicts,
     )
 
 

@@ -101,17 +101,12 @@ def main() -> None:
                 options=ORCHESTRATION_OPTIONS,
                 key="orchestration",
             )
-            execution_backend = st.selectbox(
-                "Execution",
-                options=EXECUTION_OPTIONS,
-                key="execution_backend",
-            )
-            observability_mode = st.selectbox(
-                "Observability",
-                options=OBSERVABILITY_OPTIONS,
-                key="observability_mode",
-                format_func=lambda option: OBSERVABILITY_LABELS[option],
-            )
+            use_modal = st.checkbox("Use Modal", key="use_modal")
+            execution_backend = "modal" if use_modal else "local"
+            st.session_state.execution_backend = execution_backend
+            use_raindrop = st.checkbox("Use Raindrop", key="use_raindrop")
+            observability_mode = "raindrop" if use_raindrop else "local"
+            st.session_state.observability_mode = observability_mode
             replay_demo = st.checkbox("Replay demo", key="replay_demo")
 
         with st.expander("Live Controls", expanded=False):
@@ -1493,6 +1488,8 @@ def _initialize_demo_controls(scenarios: list[DemoScenario]) -> None:
         "live_sdk_require_demo_proof",
         "live_sdk_max_turns",
         "live_sdk_timeout",
+        "use_modal",
+        "use_raindrop",
         "execution_backend",
         "observability_mode",
         "replay_demo",
@@ -1531,6 +1528,8 @@ def _apply_demo_scenario(scenario: DemoScenario, *, clear_results: bool) -> None
     st.session_state.live_sdk_timeout = 300 if is_live_run else 60
     st.session_state.execution_backend = scenario.execution_backend
     st.session_state.observability_mode = scenario.observability_backend
+    st.session_state.use_modal = scenario.execution_backend == "modal"
+    st.session_state.use_raindrop = scenario.observability_backend == "raindrop"
     st.session_state.replay_demo = scenario.replay_demo
     st.session_state.doctor_openai_live = (
         scenario.orchestration == "live_sdk" and not scenario.live_dry_run

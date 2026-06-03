@@ -33,7 +33,7 @@ def test_research_manager_deterministic_path_matches_core_loop():
 
     assert state.thesis.text == DEFAULT_THESIS
     assert len(state.assumptions) == 8
-    assert any("benchmark" in leap.leap.lower() for leap in state.invalid_leaps)
+    assert any("application-ready" in leap.leap.lower() for leap in state.invalid_leaps)
     assert state.generated_evals
 
 
@@ -78,7 +78,7 @@ def test_openai_tool_wrapper_can_run_deterministic_loop_without_api_call():
         result_json = asyncio.run(result_json)
 
     assert "generated_evals" in result_json
-    assert "Benchmark QA performance" in result_json
+    assert "Property/proxy evidence" in result_json
 
 
 def test_sdk_scripted_orchestration_returns_valid_research_state():

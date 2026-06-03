@@ -53,6 +53,8 @@ Open [http://127.0.0.1:8501](http://127.0.0.1:8501).
 
 The realtime app opens on an offline prepared-source run by default. Live SDK, live web search, Modal, and hosted Raindrop paths are opt-in.
 
+In the realtime and Streamlit UIs, `Use Modal` and `Use Raindrop` are explicit switches and both default to off. With `Use Raindrop` off, Pragmatic still writes local Workshop-compatible artifacts; it just does not attempt hosted Raindrop SDK writes.
+
 ## API Vs Codex Harness
 
 Pragmatic does not depend on the Codex CLI or a Codex benchmark harness. The live model paths use the OpenAI Python SDK and OpenAI Agents SDK from the normal public package dependencies:
@@ -147,8 +149,8 @@ cp .env.example .env
 Live integration knobs:
 
 - `OPENAI_API_KEY`: required for live OpenAI Agents SDK execution and live web source search.
-- Modal CLI authentication: required only when using `--execution-backend modal`.
-- `RAINDROP_WRITE_KEY`: optional hosted Raindrop writes. Local workshop bundles work without it.
+- Modal CLI authentication: required only when using `--execution-backend modal` or the `Use Modal` UI switch.
+- `RAINDROP_WRITE_KEY`: optional hosted Raindrop writes when using `--observability raindrop` or the `Use Raindrop` UI switch. Local workshop bundles work without it.
 - `PRAGMATIC_PREWARM_MODAL=1`: optional Modal prewarm on app startup.
 
 Commands that make live model calls require explicit flags such as `--live`, `--allow-live-sdk`, and, for live web source acquisition, `--source-mode web --allow-live-web-search`.
@@ -193,17 +195,15 @@ The scenario pack in `src/pragmatic/demo.py` includes:
 
 ## Evidence Boundaries
 
-Prepared corpora in `data/` are demo and regression fixtures, not proof that the underlying scientific claims are true.
+Prepared corpora in `src/pragmatic/data/` are demo and regression fixtures, not proof that the underlying scientific claims are true.
 
 Retrieval scores are relevance heuristics only. Evidence strength is decided later by extraction, cross-source checking, invalid-leap detection, verifier tasks, and belief updates, and even those are prototype guardrails rather than a complete scientific review.
 
 The spider-silk prepared demo is intentionally skeptical: it treats tensile toughness as proxy evidence for ballistic vest performance, flags the unsupported application leap, and asks for a standards-relevant NIJ Level IIIA / V50 panel comparison against an aramid control.
 
-The default AI-scientist/materials thesis likewise separates graph retrieval support from the stronger claim that a system accelerates real materials discovery.
-
 ## Repository Map
 
-- `data/`: committed prepared source packs.
+- `src/pragmatic/data/`: committed prepared source packs included in package builds.
 - `docs/playground.md`: no-key local walkthrough for first-time visitors.
 - `docs/hackathon_demo_script.md`: recorded-demo run order and fallback artifacts.
 - `eval_baselines/default_v1.json`: committed known-good eval baseline.

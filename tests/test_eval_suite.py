@@ -3,8 +3,8 @@ import json
 from pragmatic import DEFAULT_THESIS
 from pragmatic.cli import main
 from pragmatic.eval_suite import (
-    check_benchmark_proxy_boundary,
-    check_company_claim_anecdotal,
+    check_limiting_evidence_preserved,
+    check_proxy_application_boundary,
     export_generated_eval_cases,
     run_eval_suite,
 )
@@ -20,27 +20,27 @@ def test_default_eval_suite_passes():
     assert result.failed == 0
 
 
-def test_benchmark_gate_fails_on_overcredited_first_pass():
+def test_proxy_gate_fails_on_overcredited_first_pass():
     state = run_research_loop(DEFAULT_THESIS, observability_mode="off")
     overcredited = simulate_overcredited_first_pass(state)
 
-    result = check_benchmark_proxy_boundary(overcredited)
+    result = check_proxy_application_boundary(overcredited)
 
     assert result.status == "fail"
     assert "overcredited" in result.message
 
 
-def test_company_claim_gate_fails_when_company_claim_is_direct():
+def test_limiting_evidence_gate_fails_when_limitations_are_removed():
     state = run_research_loop(DEFAULT_THESIS, observability_mode="off")
-    direct_company_claim = state.model_copy(deep=True)
-    for item in direct_company_claim.evidence_items:
-        if item.source_id == "source_006":
+    without_limitations = state.model_copy(deep=True)
+    for item in without_limitations.evidence_items:
+        if item.evidence_type == "contradictory":
             item.evidence_type = "direct"
 
-    result = check_company_claim_anecdotal(direct_company_claim)
+    result = check_limiting_evidence_preserved(without_limitations)
 
     assert result.status == "fail"
-    assert result.details["non_anecdotal_items"]
+    assert result.details["limiting_items"] == "0"
 
 
 def test_export_generated_eval_cases(tmp_path):

@@ -19,7 +19,6 @@ from pragmatic.schemas import (
 )
 
 
-BENCHMARK_SOURCE_IDS = {"source_004", "source_005"}
 REPLAY_ASSUMPTION_IDS = ["A5", "A6"]
 
 
@@ -181,8 +180,6 @@ def _replay_eval_rules(state: ResearchState) -> list[str]:
 
 
 def _overcredited_source_ids(state: ResearchState) -> set[str]:
-    if _is_demo_ai_scientist_state(state):
-        return set(BENCHMARK_SOURCE_IDS)
     return {
         item.source_id
         for item in state.evidence_items
@@ -191,17 +188,7 @@ def _overcredited_source_ids(state: ResearchState) -> set[str]:
     }
 
 
-def _is_demo_ai_scientist_state(state: ResearchState) -> bool:
-    return any("graph memory captures" in assumption.text.lower() for assumption in state.assumptions)
-
-
 def _replay_summary(first_pass: ResearchState) -> str:
-    if _is_demo_ai_scientist_state(first_pass):
-        return (
-            "First pass over-credited benchmark results as direct discovery evidence. "
-            "The generated eval rule forces the replay to treat the same benchmark sources "
-            "as proxy evidence, lowering confidence in prospective validation."
-        )
     return (
         "First pass over-credited proxy evidence as direct application evidence. "
         "The generated eval rule forces the replay to classify evidence by what it directly "
@@ -216,13 +203,13 @@ def _comparison_rationale(
 ) -> str:
     if assumption_id == "A5":
         return (
-            "The replay keeps benchmark construct-validity evidence visible but stops "
-            "treating benchmark wins as direct discovery outcomes."
+            "The replay keeps system-integration evidence visible but stops treating "
+            "proxy evidence as direct application proof."
         )
     if after_confidence < before_confidence:
         return (
-            "The replay downgrades prospective validation because the benchmark evidence "
-            "is reclassified as proxy evidence."
+            "The replay downgrades standards-relevant validation because the evidence "
+            "is reclassified by what it directly measures."
         )
     return "The replay preserves the stricter evidence boundary for this assumption."
 

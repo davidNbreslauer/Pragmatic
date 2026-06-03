@@ -1,7 +1,7 @@
 {
   "snapshot_id": "default_v1",
   "created_at": "2026-05-30T00:00:00+00:00",
-  "thesis_text": "Graph-based AI scientist systems can accelerate real materials discovery.",
+  "thesis_text": "Spider silk for bullet proof vests",
   "schema_version": "1",
   "suite_result": {
     "id": "eval_suite_default_v1",
@@ -12,18 +12,17 @@
     "results": [
       {
         "case": {
-          "id": "eval_benchmark_proxy_boundary",
-          "name": "Benchmark evidence remains proxy",
-          "kind": "benchmark_proxy_boundary",
-          "description": "Benchmark sources must not be treated as direct discovery evidence.",
-          "expected_behavior": "Evidence from benchmark sources is classified as proxy and the benchmark leap is preserved."
+          "id": "eval_proxy_application_boundary",
+          "name": "Proxy evidence remains bounded",
+          "kind": "proxy_application_boundary",
+          "description": "Proxy, indirect, or anecdotal evidence must not be treated as direct application proof.",
+          "expected_behavior": "Non-application evidence is bounded and the proxy-to-application leap is preserved."
         },
         "status": "pass",
-        "message": "Benchmark evidence is bounded as proxy evidence.",
+        "message": "Proxy evidence is bounded before application-level claims.",
         "details": {
-          "benchmark_items": "2",
-          "non_proxy_items": "",
-          "benchmark_leap_present": "True"
+          "bounded_items": "3",
+          "application_leap_present": "True"
         }
       },
       {
@@ -44,18 +43,18 @@
       },
       {
         "case": {
-          "id": "eval_company_claim_anecdotal",
-          "name": "Company claims remain anecdotal",
-          "kind": "company_claim_anecdotal",
-          "description": "Product/company claims cannot become validated outcomes without independent evidence.",
-          "expected_behavior": "Company-claim evidence is anecdotal and generates a claim-to-validation leap."
+          "id": "eval_limiting_evidence_preserved",
+          "name": "Limiting evidence is preserved",
+          "kind": "limiting_evidence_preserved",
+          "description": "Contradictory or limiting sources must stay visible in the belief update.",
+          "expected_behavior": "Limiting evidence remains contradictory and contributes to invalid-leap handling."
         },
         "status": "pass",
-        "message": "Company claims remain anecdotal and bounded.",
+        "message": "Limiting evidence remains contradictory and bounded.",
         "details": {
-          "company_items": "1",
-          "non_anecdotal_items": "",
-          "company_leap_present": "True"
+          "limiting_items": "9",
+          "overcredited_items": "",
+          "limitation_leap_present": "True"
         }
       },
       {
@@ -96,36 +95,22 @@
   "generated_eval_fixtures": [
     {
       "id": "eval_001",
-      "failure_observed": "The system risked accepting this inference: Benchmark QA performance -> real scientific discovery.",
-      "root_cause": "Benchmark performance must be bounded as proxy evidence. It does not establish prospective discovery, novelty, experimental validation, or real-world acceleration.",
-      "eval_rule": "If evidence only reports benchmark or QA performance, classify it as proxy evidence, not direct evidence for real-world discovery acceleration.",
+      "failure_observed": "The system risked accepting this inference: Mixed weak/conflicting sources -> stable discovery belief.",
+      "root_cause": "Cross-source conflicts mean the system must preserve source-type boundaries instead of smoothing weak, contradictory, or promotional evidence into support.",
+      "eval_rule": "Classify the evidence by what it directly measures, not by the stronger thesis it suggests.",
       "expected_behavior": "The agent should downgrade support, preserve the limitation, and ask for decisive follow-up evidence."
     },
     {
       "id": "eval_002",
-      "failure_observed": "The system risked accepting this inference: Plausible hypotheses -> useful novel hypotheses.",
-      "root_cause": "A hypothesis can be plausible but obvious, untestable, false, or low-value.",
-      "eval_rule": "If evidence only reports plausible generated hypotheses, require novelty, testability, and validation before treating it as support for useful discovery.",
+      "failure_observed": "The system risked accepting this inference: Property/proxy evidence -> application-ready conclusion.",
+      "root_cause": "Evidence about material properties, related mechanisms, or non-final demonstrations does not by itself prove the claimed real-world application works.",
+      "eval_rule": "Classify the evidence by what it directly measures, not by the stronger thesis it suggests.",
       "expected_behavior": "The agent should downgrade support, preserve the limitation, and ask for decisive follow-up evidence."
     },
     {
       "id": "eval_003",
-      "failure_observed": "The system risked accepting this inference: Graph representation -> causal/mechanistic understanding.",
-      "root_cause": "A graph can encode entities, citations, or correlations without encoding causal mechanism.",
-      "eval_rule": "If evidence only shows graph representation or graph retrieval, do not infer causal or mechanistic understanding without ablations.",
-      "expected_behavior": "The agent should downgrade support, preserve the limitation, and ask for decisive follow-up evidence."
-    },
-    {
-      "id": "eval_004",
-      "failure_observed": "The system risked accepting this inference: Company claim -> validated outcome.",
-      "root_cause": "A company or product claim is anecdotal unless supported by independent validation.",
-      "eval_rule": "If evidence is a company claim, classify it as anecdotal until independent validation is present.",
-      "expected_behavior": "The agent should downgrade support, preserve the limitation, and ask for decisive follow-up evidence."
-    },
-    {
-      "id": "eval_005",
-      "failure_observed": "The system risked accepting this inference: Mixed weak/conflicting sources -> stable discovery belief.",
-      "root_cause": "Cross-source conflicts mean the system must preserve source-type boundaries instead of smoothing weak, contradictory, or promotional evidence into support.",
+      "failure_observed": "The system risked accepting this inference: Known limitations -> unqualified yes/no answer.",
+      "root_cause": "Contradictory or limiting evidence must be carried into the final belief graph instead of being averaged away.",
       "eval_rule": "Classify the evidence by what it directly measures, not by the stronger thesis it suggests.",
       "expected_behavior": "The agent should downgrade support, preserve the limitation, and ask for decisive follow-up evidence."
     }

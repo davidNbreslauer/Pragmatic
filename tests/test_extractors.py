@@ -28,7 +28,7 @@ def test_modal_payloads_preserve_source_and_assumptions():
     payloads = make_extraction_payloads(sources[:2], assumptions)
 
     assert len(payloads) == 2
-    assert payloads[0]["source"]["id"] == "source_001"
+    assert payloads[0]["source"]["id"] == "spider_001"
     assert payloads[0]["assumptions"][0]["id"] == "A1"
 
 
@@ -40,7 +40,7 @@ def test_modal_job_local_handler_validates_payload_shape():
     raw_items = extract_source_job_local(payload["source"], payload["assumptions"])
 
     assert raw_items
-    assert EvidenceItem.model_validate(raw_items[0]).source_id == "source_001"
+    assert EvidenceItem.model_validate(raw_items[0]).source_id == "spider_001"
 
 
 def test_modal_extraction_mode_can_use_adapter_without_remote_call(monkeypatch):

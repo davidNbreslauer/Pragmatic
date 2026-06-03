@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic.replay import run_replay_demo
 from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
 from pragmatic.schemas import (
     GeneratedEval,
@@ -19,18 +19,15 @@ from pragmatic.schemas import (
 )
 
 
-COMPANY_CLAIM_SOURCE_TYPE = "company_claim"
-
-
 def build_default_eval_cases() -> list[RegressionEvalCase]:
     return [
         RegressionEvalCase(
-            id="eval_benchmark_proxy_boundary",
-            name="Benchmark evidence remains proxy",
-            kind="benchmark_proxy_boundary",
-            description="Benchmark sources must not be treated as direct discovery evidence.",
+            id="eval_proxy_application_boundary",
+            name="Proxy evidence remains bounded",
+            kind="proxy_application_boundary",
+            description="Proxy, indirect, or anecdotal evidence must not be treated as direct application proof.",
             expected_behavior=(
-                "Evidence from benchmark sources is classified as proxy and the benchmark leap is preserved."
+                "Non-application evidence is bounded and the proxy-to-application leap is preserved."
             ),
         ),
         RegressionEvalCase(
@@ -41,11 +38,11 @@ def build_default_eval_cases() -> list[RegressionEvalCase]:
             expected_behavior="A6 support is unsupported with low confidence when no direct validation exists.",
         ),
         RegressionEvalCase(
-            id="eval_company_claim_anecdotal",
-            name="Company claims remain anecdotal",
-            kind="company_claim_anecdotal",
-            description="Product/company claims cannot become validated outcomes without independent evidence.",
-            expected_behavior="Company-claim evidence is anecdotal and generates a claim-to-validation leap.",
+            id="eval_limiting_evidence_preserved",
+            name="Limiting evidence is preserved",
+            kind="limiting_evidence_preserved",
+            description="Contradictory or limiting sources must stay visible in the belief update.",
+            expected_behavior="Limiting evidence remains contradictory and contributes to invalid-leap handling.",
         ),
         RegressionEvalCase(
             id="eval_conflict_workshop_links",
@@ -89,38 +86,36 @@ def evaluate_regression_cases(
 ) -> list[RegressionEvalCaseResult]:
     cases = {case.kind: case for case in build_default_eval_cases()}
     return [
-        check_benchmark_proxy_boundary(state, cases["benchmark_proxy_boundary"]),
+        check_proxy_application_boundary(state, cases["proxy_application_boundary"]),
         check_a6_requires_direct_validation(state, cases["a6_requires_direct_validation"]),
-        check_company_claim_anecdotal(state, cases["company_claim_anecdotal"]),
+        check_limiting_evidence_preserved(state, cases["limiting_evidence_preserved"]),
         check_conflict_workshop_links(state, cases["conflict_workshop_links"]),
         check_replay_confidence_not_increased(replay, cases["replay_confidence_not_increased"]),
     ]
 
 
-def check_benchmark_proxy_boundary(
+def check_proxy_application_boundary(
     state: ResearchState,
     case: RegressionEvalCase | None = None,
 ) -> RegressionEvalCaseResult:
     resolved_case = case or build_default_eval_cases()[0]
-    benchmark_items = [
-        item for item in state.evidence_items if item.source_id in BENCHMARK_SOURCE_IDS
+    bounded_items = [
+        item
+        for item in state.evidence_items
+        if item.evidence_type in {"proxy", "indirect", "anecdotal"}
     ]
-    non_proxy_items = [
-        item for item in benchmark_items if item.evidence_type != "proxy"
-    ]
-    benchmark_leap_present = any(
-        leap.id == "leap_benchmark_to_discovery" for leap in state.invalid_leaps
+    application_leap_present = any(
+        leap.id == "leap_proxy_to_application_ready" for leap in state.invalid_leaps
     )
-    passed = bool(benchmark_items) and not non_proxy_items and benchmark_leap_present
+    passed = bool(bounded_items) and application_leap_present
     return _case_result(
         resolved_case,
         passed=passed,
-        pass_message="Benchmark evidence is bounded as proxy evidence.",
-        fail_message="Benchmark evidence was overcredited or the benchmark leap disappeared.",
+        pass_message="Proxy evidence is bounded before application-level claims.",
+        fail_message="Proxy evidence was overcredited or the proxy-to-application leap disappeared.",
         details={
-            "benchmark_items": str(len(benchmark_items)),
-            "non_proxy_items": ",".join(item.id for item in non_proxy_items),
-            "benchmark_leap_present": str(benchmark_leap_present),
+            "bounded_items": str(len(bounded_items)),
+            "application_leap_present": str(application_leap_present),
         },
     )
 
@@ -159,34 +154,32 @@ def check_a6_requires_direct_validation(
     )
 
 
-def check_company_claim_anecdotal(
+def check_limiting_evidence_preserved(
     state: ResearchState,
     case: RegressionEvalCase | None = None,
 ) -> RegressionEvalCaseResult:
     resolved_case = case or build_default_eval_cases()[2]
-    source_by_id = {source.id: source for source in state.sources}
-    company_items = [
+    limiting_items = [
         item
         for item in state.evidence_items
-        if source_by_id.get(item.source_id) is not None
-        and source_by_id[item.source_id].source_type == COMPANY_CLAIM_SOURCE_TYPE
+        if item.evidence_type == "contradictory"
     ]
-    non_anecdotal_items = [
-        item for item in company_items if item.evidence_type != "anecdotal"
+    overcredited_items = [
+        item for item in limiting_items if item.evidence_type != "contradictory"
     ]
-    company_leap_present = any(
-        leap.id == "leap_claim_to_validated_outcome" for leap in state.invalid_leaps
+    limitation_leap_present = any(
+        leap.id == "leap_limitations_to_unqualified_yes" for leap in state.invalid_leaps
     )
-    passed = bool(company_items) and not non_anecdotal_items and company_leap_present
+    passed = bool(limiting_items) and not overcredited_items and limitation_leap_present
     return _case_result(
         resolved_case,
         passed=passed,
-        pass_message="Company claims remain anecdotal and bounded.",
-        fail_message="Company claims were overcredited or their invalid leap disappeared.",
+        pass_message="Limiting evidence remains contradictory and bounded.",
+        fail_message="Limiting evidence was overcredited or its invalid leap disappeared.",
         details={
-            "company_items": str(len(company_items)),
-            "non_anecdotal_items": ",".join(item.id for item in non_anecdotal_items),
-            "company_leap_present": str(company_leap_present),
+            "limiting_items": str(len(limiting_items)),
+            "overcredited_items": ",".join(item.id for item in overcredited_items),
+            "limitation_leap_present": str(limitation_leap_present),
         },
     )
 
@@ -319,4 +312,3 @@ def _source_is_independent_direct(source: Source | None) -> bool:
     if source is None:
         return False
     return source.source_type not in {"benchmark", "company_claim"}
-

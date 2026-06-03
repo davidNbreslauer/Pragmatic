@@ -33,7 +33,7 @@ def test_integration_doctor_can_report_live_modal_smoke(monkeypatch):
                     task_type=task.task_type,
                     backend="modal",
                     status="succeeded",
-                    source_ids=["source_001"],
+                    source_ids=["spider_001"],
                     metadata={"operation": "test"},
                 )
             ],

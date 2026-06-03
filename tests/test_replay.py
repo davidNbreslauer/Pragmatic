@@ -1,25 +1,25 @@
 from pragmatic import DEFAULT_THESIS
-from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic.replay import run_replay_demo
 
 
-def test_replay_demo_treats_benchmark_evidence_more_strictly_after_eval():
+def test_replay_demo_treats_proxy_evidence_more_strictly_after_eval():
     replay = run_replay_demo(DEFAULT_THESIS, observability_mode="off")
 
-    first_benchmark_types = {
+    overcredited_types = {
         item.source_id: item.evidence_type
         for item in replay.first_pass.evidence_items
-        if item.source_id in BENCHMARK_SOURCE_IDS
+        if "First-pass failure" in item.limitation
     }
-    replay_benchmark_types = {
+    replay_proxy_types = {
         item.source_id: item.evidence_type
         for item in replay.replay_pass.evidence_items
-        if item.source_id in BENCHMARK_SOURCE_IDS
+        if item.source_id in overcredited_types
     }
 
-    assert first_benchmark_types
-    assert all(evidence_type == "direct" for evidence_type in first_benchmark_types.values())
-    assert all(evidence_type == "proxy" for evidence_type in replay_benchmark_types.values())
-    assert any("benchmark" in rule.lower() for rule in replay.applied_eval_rules)
+    assert overcredited_types
+    assert all(evidence_type == "direct" for evidence_type in overcredited_types.values())
+    assert any(evidence_type in {"proxy", "indirect", "anecdotal"} for evidence_type in replay_proxy_types.values())
+    assert any("directly measures" in rule.lower() for rule in replay.applied_eval_rules)
 
 
 def test_replay_demo_downgrades_prospective_validation_confidence():
@@ -27,9 +27,9 @@ def test_replay_demo_downgrades_prospective_validation_confidence():
     first_assumptions = {assumption.id: assumption for assumption in replay.first_pass.assumptions}
     replay_assumptions = {assumption.id: assumption for assumption in replay.replay_pass.assumptions}
 
-    assert replay_assumptions["A6"].confidence < first_assumptions["A6"].confidence
+    assert replay_assumptions["A5"].confidence < first_assumptions["A5"].confidence
     assert replay_assumptions["A6"].support_level == "unsupported"
-    assert any(comparison.assumption_id == "A6" for comparison in replay.comparisons)
+    assert any(comparison.assumption_id == "A5" for comparison in replay.comparisons)
 
 
 def test_replay_result_serializes_to_json():

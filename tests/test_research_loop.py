@@ -1,6 +1,6 @@
 from pragmatic import DEFAULT_THESIS, run_research_loop
 from pragmatic.corpus import load_corpus, score_source_for_question
-from pragmatic.research_loop import generate_initial_questions
+from pragmatic.research_loop import decompose_thesis, generate_initial_questions
 from pragmatic.schemas import ResearchState, Thesis
 
 
@@ -8,23 +8,27 @@ def test_load_corpus_validates_sources():
     sources = load_corpus()
 
     assert len(sources) >= 8
-    assert sources[0].id == "source_001"
-    assert sources[0].published_year == 2024
-    assert "hypothesis-generation" in sources[0].tags
-    assert sources[0].evidence_scope == "workflow automation demo"
+    assert sources[0].id == "spider_001"
+    assert sources[0].published_year == 2026
+    assert "spider-silk" in sources[0].tags
+    assert sources[0].evidence_scope == "material-property support, not ballistic vest validation"
 
 
 def test_retrieval_scoring_matches_query_terms():
     sources = {source.id: source for source in load_corpus()}
-    questions = generate_initial_questions(ResearchState(thesis=Thesis(text=DEFAULT_THESIS)))
-    benchmark_question = next(question for question in questions if question.id == "Q3")
+    state = ResearchState(
+        thesis=Thesis(text=DEFAULT_THESIS),
+        assumptions=decompose_thesis(DEFAULT_THESIS),
+    )
+    questions = generate_initial_questions(state)
+    application_question = next(question for question in questions if question.id == "Q3")
 
-    benchmark_score = score_source_for_question(sources["source_004"], benchmark_question)
-    workflow_score = score_source_for_question(sources["source_001"], benchmark_question)
+    standard_score = score_source_for_question(sources["spider_006"], application_question)
+    property_score = score_source_for_question(sources["spider_001"], application_question)
 
-    assert benchmark_score.score > workflow_score.score
-    assert "benchmark" in benchmark_score.matched_terms
-    assert "validate" in benchmark_score.matched_terms
+    assert standard_score.score > 0
+    assert property_score.score > 0
+    assert "level" in standard_score.matched_terms
 
 
 def test_research_loop_produces_core_state():
@@ -32,7 +36,7 @@ def test_research_loop_produces_core_state():
 
     assert state.thesis.text == DEFAULT_THESIS
     assert len(state.assumptions) == 8
-    assert len(state.research_questions) == 4
+    assert len(state.research_questions) == 8
     assert len(state.sources) >= 8
     assert len(state.retrieval_scores) == len(state.research_questions) * len(state.sources)
     assert len(state.evidence_items) >= 8
@@ -42,16 +46,15 @@ def test_research_loop_produces_core_state():
     assert state.decisive_tests
 
 
-def test_proxy_benchmark_generates_failure_eval():
+def test_proxy_evidence_generates_failure_eval():
     state = run_research_loop(DEFAULT_THESIS, observability_mode="off")
 
-    benchmark_evidence = [
-        item for item in state.evidence_items if item.source_id in {"source_004", "source_005"}
+    proxy_evidence = [
+        item for item in state.evidence_items if item.evidence_type in {"proxy", "indirect", "anecdotal"}
     ]
-    assert benchmark_evidence
-    assert all(item.evidence_type == "proxy" for item in benchmark_evidence)
-    assert any("benchmark" in leap.leap.lower() for leap in state.invalid_leaps)
-    assert any("proxy evidence" in generated_eval.eval_rule for generated_eval in state.generated_evals)
+    assert proxy_evidence
+    assert any("application-ready" in leap.leap.lower() for leap in state.invalid_leaps)
+    assert any("directly measures" in generated_eval.eval_rule for generated_eval in state.generated_evals)
 
 
 def test_belief_update_downgrades_prospective_validation():
@@ -67,6 +70,6 @@ def test_research_state_serializes_to_json():
 
     serialized = state.model_dump_json()
 
-    assert "Graph-based AI scientist systems" in serialized
+    assert "Spider silk for bullet proof vests" in serialized
     assert "retrieval_scores" in serialized
     assert "generated_evals" in serialized

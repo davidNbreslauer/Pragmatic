@@ -13,6 +13,7 @@ Use this before switching the repository from private to public or announcing it
 - Live model paths use public OpenAI API credentials through `OPENAI_API_KEY`; the repo does not depend on the Codex CLI or a Codex benchmark harness.
 - Search ranking is documented as lightweight deterministic term-overlap scoring, not a deep-research or authoritative evidence-ranking system.
 - The realtime cockpit defaults to offline prepared-source/local execution so first-time visitors can play without API keys or Modal.
+- Modal and hosted Raindrop are explicit UI switches and default to off.
 
 ## Check Before Publishing
 

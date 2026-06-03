@@ -33,7 +33,7 @@ def test_local_research_executor_runs_typed_source_tasks():
     assert result.attempted_backend == "local"
     assert len(result.results) == 2
     assert all(isinstance(item, EvidenceItem) for item in result.results[0].evidence_items)
-    assert tasks[0].metadata["source_type"] == "paper"
+    assert tasks[0].metadata["source_type"] == "review"
     assert tasks[0].metadata["evidence_scope"]
 
 
@@ -46,7 +46,7 @@ def test_source_parse_tasks_record_worker_metadata():
 
     task_result = result.results[0]
     assert task_result.task_type == "parse_source"
-    assert task_result.sources[0].id == "source_001"
+    assert task_result.sources[0].id == "spider_001"
     assert task_result.metadata["worker_status"] == "completed"
     assert "duration_ms" in task_result.metadata
     assert task_result.metadata["output_source_count"] == "1"
@@ -100,7 +100,7 @@ def test_modal_task_payload_preserves_general_task_shape():
     raw_result = research_task_job_local(payloads[0])
 
     assert payloads[0]["task_type"] == "extract_evidence"
-    assert payloads[0]["source"]["id"] == "source_001"
+    assert payloads[0]["source"]["id"] == "spider_001"
     parsed_result = ResearchTaskResult.model_validate(raw_result)
     assert parsed_result.task_id == tasks[0].id
     assert parsed_result.backend == "modal"
@@ -219,7 +219,7 @@ def test_modal_remote_runner_converts_worker_exception_to_failed_result(monkeypa
 
     assert results[0].backend == "modal"
     assert results[0].status == "failed"
-    assert results[0].source_ids == ["source_001"]
+    assert results[0].source_ids == ["spider_001"]
     assert "worker boom" in (results[0].error or "")
 
 

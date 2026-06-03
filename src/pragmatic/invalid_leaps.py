@@ -26,7 +26,7 @@ def detect_invalid_leaps(state: ResearchState) -> list[InvalidLeap]:
                 source_ids=benchmark_source_ids,
                 affected_assumption_ids=["A5", "A6"],
                 suggested_followup_question=(
-                    "What evidence exists for prospective validation of AI-generated materials hypotheses?"
+                    "What evidence directly validates the claimed application rather than a proxy task?"
                 ),
             )
         )
@@ -133,8 +133,7 @@ def detect_invalid_leaps(state: ResearchState) -> list[InvalidLeap]:
             )
         )
 
-    if not _is_demo_ai_scientist_state(state):
-        leaps.extend(_generic_invalid_leaps(state))
+    leaps.extend(_generic_invalid_leaps(state))
 
     return leaps
 
@@ -231,7 +230,3 @@ def _source_type(state: ResearchState, source_id: str) -> str | None:
         if source.id == source_id:
             return source.source_type
     return None
-
-
-def _is_demo_ai_scientist_state(state: ResearchState) -> bool:
-    return any("graph memory captures" in assumption.text.lower() for assumption in state.assumptions)

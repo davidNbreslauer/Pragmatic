@@ -9,7 +9,7 @@ def test_cross_source_checker_detects_validation_conflicts():
     conflicts = detect_evidence_conflicts(state.sources, state.evidence_items)
 
     assert conflicts
-    assert any(conflict.id == "conflict_a6_sparse_prospective_validation" for conflict in conflicts)
+    assert any(conflict.id == "conflict_a5_support_vs_limitation" for conflict in conflicts)
     assert any(conflict.severity == "high" for conflict in conflicts)
 
 
@@ -23,7 +23,7 @@ def test_research_loop_records_cross_source_conflicts_and_invalid_leap():
         leap.id == "leap_mixed_sources_to_stable_belief"
         for leap in state.invalid_leaps
     )
-    assert "cross-source conflict penalty" in (assumptions["A6"].latest_update or "")
+    assert "cross-source conflict penalty" in (assumptions["A5"].latest_update or "")
 
 
 def test_cross_check_task_is_recorded_in_task_results():

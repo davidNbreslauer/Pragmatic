@@ -23,8 +23,11 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
+      - name: Run demo smoke
+        run: python -m pragmatic demo-smoke --fail-on-fail
+
       - name: Compile Python files
-        run: python -m compileall app.py src tests
+        run: python -m compileall app.py realtime_app.py src tests
 
       - name: Check eval baseline
         run: python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-regression

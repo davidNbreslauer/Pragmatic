@@ -1,241 +1,220 @@
 # Pragmatic
 
-Pragmatic is an autoresearch state machine for testing whether a technical thesis is supported by evidence. The first slice is deterministic: it turns a thesis into assumptions, retrieves from a prepared corpus, extracts typed evidence, detects invalid inference leaps, updates beliefs, and generates evals from failures.
+![Pragmatic realtime research cockpit](artifacts/pragmatic-header-1440x900.png)
 
-See [PRAGMATIC_PRD.md](PRAGMATIC_PRD.md) for the product requirements.
+Pragmatic is a research-state workbench for testing whether a technical thesis is actually supported by evidence.
 
-## Milestone 1
+It decomposes a thesis into assumptions, retrieves prepared or live sources, extracts typed evidence, detects invalid inference leaps, updates a belief graph, proposes decisive tests, and turns its own reasoning failures into evals. The goal is not to generate a more polished report. The goal is to expose the current structured research state: what would need to be true, what evidence exists, where the chain breaks, and what test would reduce uncertainty fastest.
 
-This scaffold intentionally does not include live web search, Modal, Raindrop Workshop, or the OpenAI Agents SDK runtime yet. Those become required layers in later milestones after the local research-state loop is testable.
+## Why This Exists
 
-## Milestone 2
+Autonomous research demos can sound convincing while quietly mixing together very different claims:
 
-The OpenAI Agents SDK boundary is now represented in `src/pragmatic/agents.py`. It exposes a `ResearchManager` facade and SDK `@function_tool` wrappers around the deterministic business functions. Tests use the offline deterministic path; live SDK execution requires an API key and should be added to app/CLI surfaces later.
+- retrieval or reasoning support
+- proxy benchmark performance
+- cross-domain transfer
+- prospective real-world validation
 
-## Milestone 3
+Pragmatic keeps those surfaces separate. It is built to make assumptions, source-backed evidence, proxy evidence, invalid leaps, confidence updates, and next tests visible in one inspectable loop.
 
-The minimal Streamlit UI is available in `app.py`. It runs the deterministic `ResearchManager` path and renders the resulting `ResearchState`.
+## Current Status
 
-Run the Streamlit app:
+- Deterministic prepared-corpus research loop for local demos and regression tests.
+- Realtime Starlette cockpit in `realtime_app.py` with streamed thinking, belief graph updates, worker activity, counters, and a bottom-line verdict.
+- Optional live OpenAI Agents SDK orchestration with explicit opt-in guardrails.
+- Optional Modal-backed remote fan-out for research tasks.
+- Local Raindrop Workshop-compatible trace bundles by default, with optional hosted Raindrop writes.
+- CI-ready regression gates with a committed eval baseline.
+
+## Quickstart
+
+Pragmatic requires Python 3.11 or newer.
 
 ```bash
-PYTHONPATH=src streamlit run app.py
+python3 -m venv .venv
+source .venv/bin/activate
+python --version  # should be 3.11 or newer
+python -m pip install -e ".[dev]"
+python -m pragmatic demo-smoke --fail-on-fail
+python -m pytest
 ```
 
-## Milestone 4
+If you already have a Python 3.11+ environment active, start at the `pip install` step.
 
-Evidence extraction received the first local/Modal adapter boundary. `src/pragmatic/extractors.py` owns deterministic extraction, and `src/pragmatic/modal_jobs.py` defines the original Modal extraction payload shape. This milestone is now subsumed by the broader execution backend introduced in Milestone 7.
+For a guided offline run with no API keys or Modal setup, see [docs/playground.md](docs/playground.md).
 
-## Milestone 5
-
-Observability now has a local/Raindrop adapter boundary. `src/pragmatic/raindrop_client.py` writes Raindrop-compatible local trace artifacts by default and can send traces through the Raindrop Python SDK when `RAINDROP_WRITE_KEY` is configured. The Streamlit app defaults to local observability and shows the trace ID, backend, status, and generated eval artifact IDs.
-
-## Milestone 6
-
-The replay demo is now available through `src/pragmatic/replay.py`, the OpenAI Agents SDK tool boundary, and the Streamlit `Replay demo` toggle. It simulates a first pass that over-credits benchmark results as direct discovery evidence, generates an eval from that failure, then replays the same thesis with the stricter proxy-evidence boundary so the before/after belief update is visible.
-
-## Milestone 7
-
-Modal is now modeled as a general research execution backend rather than an extraction-only switch. `src/pragmatic/execution.py` defines typed research tasks, local execution, Modal-shaped execution, and fallback behavior.
-
-## Milestone 8
-
-Prepared-corpus processing now fans out into one typed extraction task per source. The loop merges task results deterministically and records task-level trace events in `ResearchState`.
-
-## Milestone 9
-
-Cross-source evidence checking now produces typed `EvidenceConflict` artifacts. These conflicts are shown in the UI, feed invalid-leap detection, and apply confidence penalties during belief updates.
-
-## Milestone 10
-
-Decisive tests now have a deterministic verifier harness. The loop executes verifier tasks, records typed `VerifierResult` artifacts, and applies verifier confidence adjustments to the final belief graph.
-
-## Milestone 11
-
-OpenAI Agents SDK orchestration now has a schema-constrained agent and a testable SDK-scripted path. `ResearchManager.run_sdk_orchestrated()` invokes the canonical research-loop tool through the SDK function-tool boundary, validates the output as `ResearchState`, and records an `AgentRunRecord`. `ResearchManager.run_live()` is ready to use `Runner.run()` for a live SDK run when API credentials are configured.
-
-## Milestone 12
-
-Raindrop/local observability now records an eval workshop, not just a run summary. Trace payloads include task spans, evidence conflicts, verifier results, failure-to-eval links, and replay outcomes. The Streamlit app shows an `Eval Workshop` section so the failure -> eval -> replay chain is visible without opening raw JSON.
-
-## Milestone 13
-
-Runs can now be saved and reloaded locally. `src/pragmatic/persistence.py` stores complete `ResearchState` payloads under `.pragmatic/runs`, maintains an index, and compares belief confidence deltas between runs. The Streamlit app adds run-history controls for saving the current run, loading a saved run, and comparing a saved baseline to the current belief graph.
-
-## Milestone 14
-
-The deterministic loop now has regression gates. `src/pragmatic/eval_suite.py` runs fixture-style checks that protect the benchmark-proxy boundary, the prospective-validation support threshold, company-claim evidence classification, eval-workshop failure links, and replay confidence behavior. The Streamlit app adds a `Run Eval Suite` button, and the CLI can run the suite or export generated eval fixtures:
+## Run The Realtime Cockpit
 
 ```bash
-PYTHONPATH=src python -m pragmatic eval-suite --fail-on-fail
-PYTHONPATH=src python -m pragmatic export-generated-evals .pragmatic/generated_evals.json
+python -m uvicorn realtime_app:app --host 127.0.0.1 --port 8501
 ```
 
-## Milestone 15
+Open [http://127.0.0.1:8501](http://127.0.0.1:8501).
 
-Regression gates can now be frozen into a local eval corpus. `src/pragmatic/eval_corpus.py` saves versioned known-good snapshots under `.pragmatic/eval_corpus`, stores an index, and compares current behavior against a saved baseline. Snapshot comparison checks both gate status changes and generated eval fixture drift. The Streamlit app can save a passing snapshot and compare against it from the Evaluation sidebar.
+The realtime app opens on an offline prepared-source run by default. Live SDK, live web search, Modal, and hosted Raindrop paths are opt-in.
+
+## API Vs Codex Harness
+
+Pragmatic does not depend on the Codex CLI or a Codex benchmark harness. The live model paths use the OpenAI Python SDK and OpenAI Agents SDK from the normal public package dependencies:
+
+- `openai-agents` for live agent orchestration through `Runner.run_streamed`.
+- `openai` for live web source acquisition through the Responses API `web_search` tool.
+- `OPENAI_API_KEY` for authentication.
+
+The command named `live-run-harness` is Pragmatic's own guardrailed API harness. In dry-run mode it validates settings without making an API call. In live mode it requires `--live --allow-live-sdk` and `OPENAI_API_KEY`.
+
+## Search And Ranking Limits
+
+Search and ranking are intentionally lightweight in this prototype.
+
+For prepared corpora, Pragmatic scores every source against every research question with deterministic term overlap. The score compares normalized terms from the question/query against source title, source type, citation, evidence scope, tags, and text. It adds a small tag-overlap bonus and a small source-type bonus for papers, benchmarks, reviews, standards, and government sources. Sources are ordered by their best score across open questions.
+
+For live web mode, Pragmatic asks the OpenAI Responses API `web_search` tool to return a small source pack, preferring primary papers, standards, government or testing bodies, reviews, credible technical sources, and contradictory or limiting evidence. Those normalized web sources then pass through the same lightweight scoring layer.
+
+This is not yet a sophisticated deep-research or ranking system. It does not perform citation-graph analysis, semantic vector retrieval, multi-hop search planning, source authority modeling, systematic literature review, or learned reranking. The score is a transparent relevance signal for demo traceability, not a claim that the best or most authoritative evidence has been found.
+
+## Useful Commands
+
+List curated demo scenarios:
 
 ```bash
-PYTHONPATH=src python -m pragmatic save-eval-snapshot
-PYTHONPATH=src python -m pragmatic list-eval-snapshots
-PYTHONPATH=src python -m pragmatic compare-eval-snapshot <snapshot-id> --fail-on-regression
+python -m pragmatic demo-scenarios
 ```
 
-## Milestone 16
-
-The eval corpus now has a committed known-good baseline and a CI-ready regression gate. `eval_baselines/default_v1.json` is generated through the canonical baseline exporter, and `check-eval-baseline` compares the current deterministic loop against that tracked baseline. CI runs tests, bytecode compilation, and the baseline check.
+Run the deterministic regression gates:
 
 ```bash
-PYTHONPATH=src python -m pragmatic export-eval-baseline eval_baselines/default_v1.json
-PYTHONPATH=src python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
-PYTHONPATH=src python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-change
+python -m pragmatic eval-suite --fail-on-fail
 ```
 
-## Milestone 17
-
-Prepared-corpus ingestion now carries structured source metadata and deterministic retrieval scoring. `Source` records include published year, tags, and evidence scope, while `RetrievalScore` records capture source/question matches, matched terms, scores, and rationales. The research loop ranks prepared sources by score, records the score matrix in `ResearchState`, and the Streamlit app shows a `Retrieval Scores` table.
-
-## Milestone 18
-
-Live OpenAI Agents SDK orchestration is now available as an explicit opt-in path. `ResearchManager.run_live_sync()` and `run-live-sdk` CLI execution require both `OPENAI_API_KEY` and an explicit `allow_live_sdk` confirmation, then validate the final output as `ResearchState` and record a `live_sdk` `AgentRunRecord`. The Streamlit app exposes `live_sdk` mode behind an `Enable live SDK calls` checkbox.
+Compare current behavior against the committed eval baseline:
 
 ```bash
-PYTHONPATH=src python -m pragmatic run-live-sdk --allow-live-sdk --observability off --output .pragmatic/live_state.json
+python -m pragmatic check-eval-baseline eval_baselines/default_v1.json --fail-on-regression
 ```
 
-## Milestone 19
-
-Live SDK execution now has a guardrailed harness. `live-run-harness` defaults to dry run, records whether credentials are available without exposing them, enforces prepared-corpus-only/no-web-search policy, caps max turns and timeout, and writes a replayable JSON artifact under `.pragmatic/live_runs`. The Streamlit `live_sdk` mode now shows the same harness status before any real API call.
+Run the guarded live-path harness in dry-run mode:
 
 ```bash
-PYTHONPATH=src python -m pragmatic live-run-harness
-PYTHONPATH=src python -m pragmatic live-run-harness --live --allow-live-sdk --max-turns 4 --timeout-seconds 60 --observability local
+python -m pragmatic live-run-harness
 ```
 
-## Milestone 20
-
-Modal execution now ships the local `pragmatic` package into the remote worker image, applies worker timeout/retry guardrails, and maps typed `ResearchTask` payloads through Modal with ordered parallel fan-out. Individual remote worker exceptions are converted into typed failed `ResearchTaskResult` records, while full Modal unavailability still falls back to the local executor when requested. Batch metadata now records task counts, success/failure counts, task types, Modal app name, timeout, and retry settings.
-
-## Milestone 21
-
-Raindrop Workshop observability now writes a durable workshop bundle alongside the chronological trace. Local and Raindrop modes share the same failure/eval/replay payload shape, including failure artifacts, generated eval artifacts linked to source failures, replay artifacts, and a Raindrop event plan. The Streamlit observability section now surfaces the workshop bundle path and failure artifact IDs.
-
-## Milestone 22
-
-OpenAI Agents SDK scripted orchestration now runs through visible specialist tool steps instead of invoking the canonical loop as one opaque tool call. `ResearchManager.run_sdk_orchestrated()` records specialist steps for assumption decomposition, question planning, retrieval, retrieval scoring, backend execution fan-out, cross-checking, invalid-leap detection, belief updates, decisive-test writing, verifier execution, eval writing, workshop assembly, and observability recording. The live SDK prompt now instructs the same specialist-tool order while preserving the prepared-corpus-only/no-live-web-search guardrail.
-
-## Milestone 23
-
-Live-demo integration readiness now has a first-class doctor. `run_integration_doctor()` checks OpenAI Agents SDK import/credential readiness, Modal installation/profile readiness with an optional live remote smoke task, and local Raindrop Workshop bundle generation without requiring a hosted write key. The CLI and Streamlit app expose the same checks so the demo can show which layers are live versus skipped or unavailable.
+Run a live OpenAI API-backed path with prepared sources:
 
 ```bash
-PYTHONPATH=src python -m pragmatic doctor
-PYTHONPATH=src python -m pragmatic doctor --run-openai-live --run-modal-remote
+export OPENAI_API_KEY="..."
+python -m pragmatic live-run-harness \
+  --live \
+  --allow-live-sdk \
+  --source-mode prepared \
+  --observability local
 ```
 
-## Milestone 24
-
-Modal-backed execution is now visible as a broader research fan-out layer. Prepared corpus sources pass through typed `parse_source` tasks before `extract_evidence` tasks, and the same execution backend also runs cross-checking and verifier tasks. Each `ResearchTaskResult` records worker status, duration, source counts, and output counts. The Streamlit app shows a `Research Execution Tasks` table so a demo viewer can see which work ran locally or through Modal.
-
-## Milestone 25
-
-Raindrop Workshop artifacts now include a connection layer that makes the demo trace readable: specialist SDK steps, Modal/local task spans, failure artifacts, generated evals, and replay outcomes are linked through stable IDs. Generated evals carry their source failure ID, task spans include agent/tool and worker metadata, the workshop bundle includes specialist/task artifacts plus connection rows, and the Streamlit Eval Workshop panel renders the chain directly.
-
-## Milestone 26
-
-The live SDK harness now produces a demo-readiness proof. Successful live runs include a `LiveRunProof` showing schema validation, prepared-corpus guardrails, Modal task counts, Workshop observability, trace paths, generated eval counts, invalid leap counts, and replay outcome counts. `--require-demo-proof` can fail a live run when the requested Modal/Workshop proof is missing, and the Streamlit live harness panel shows the same proof metrics.
+Run live OpenAI API-backed source acquisition with web search:
 
 ```bash
-PYTHONPATH=src python -m pragmatic live-run-harness --live --allow-live-sdk --execution-backend modal --observability local --require-demo-proof
-```
-
-## Milestone 27
-
-The Streamlit app now opens as a hackathon cockpit. Curated demo scenarios set the thesis, orchestration mode, execution backend, observability backend, replay toggle, and live proof defaults. The first visible panels prioritize the Demo Cockpit, integration status, live proof, agent orchestration, research execution tasks, Eval Workshop, replay, invalid leaps, and observability before lower-level tables.
-
-## Milestone 28
-
-The repo now includes a curated scenario pack in `src/pragmatic/demo.py`: Core Evidence Loop, Modal Fan-Out, Failure To Eval Replay, and Live SDK Guarded. The same scenarios are exposed through the app and the CLI.
-
-```bash
-PYTHONPATH=src python -m pragmatic demo-scenarios
-```
-
-## Milestone 29
-
-Demo reliability now has a one-command smoke harness. It runs the integration doctor, core loop, replay demo, and regression gates, then writes replayable artifacts under `.pragmatic/demo`.
-
-```bash
-PYTHONPATH=src python -m pragmatic demo-smoke --fail-on-fail
-```
-
-## Milestone 30
-
-The hackathon demo script is tracked in `docs/hackathon_demo_script.md`, including setup commands, a three-minute run order, and backup artifact paths for live-service failures.
-
-## Milestone 31
-
-Arbitrary-thesis research now has a real-source path. Non-demo theses are decomposed into generic evidence assumptions, the OpenAI web-search adapter can normalize live search results into `Source` records, generic extraction works for arbitrary source IDs, and the skeptic/verifier layers generate failure/eval artifacts for proxy-to-application leaps. The Streamlit app exposes `Evidence search`, `Allow live web search`, web-search model, and max-source controls, and the Sources panel lets the run output be inspected before evidence, belief updates, and Raindrop Workshop traces.
-
-```bash
-PYTHONPATH=src python -m pragmatic live-run-harness \
+export OPENAI_API_KEY="..."
+python -m pragmatic live-run-harness \
   --live \
   --allow-live-sdk \
   --source-mode web \
   --allow-live-web-search \
-  --thesis "Can spider silk make a bullet proof vest?" \
-  --execution-backend modal \
-  --observability local \
-  --require-demo-proof
+  --observability local
 ```
 
-## Milestone 32
-
-The user-facing demo now has a realtime web app in `realtime_app.py`. It keeps the same live OpenAI Agents SDK, Modal, live web evidence, and local Raindrop Workshop execution path, but streams actual progress events to the browser with a live graph while the run is in flight.
+Run the no-key spider-silk prepared-corpus demo:
 
 ```bash
-PYTHONPATH=src python -m uvicorn realtime_app:app --host 0.0.0.0 --port 8501
+python -m uvicorn realtime_app:app --host 127.0.0.1 --port 8501
 ```
 
-Run tests:
+Then open [http://127.0.0.1:8501](http://127.0.0.1:8501) and click `Ask Pragmatic`. For a CLI smoke version of the same public-safe path, run `python -m pragmatic demo-smoke --fail-on-fail`.
+
+Run the older Streamlit surface:
 
 ```bash
-PYTHONPATH=src pytest
+python -m streamlit run app.py
 ```
 
-## Milestone 33
+## Optional Live Integrations
 
-The realtime app is now a research cockpit instead of a fixed pipeline diagram. The SSE envelope remains backward-compatible, but events may include a top-level `kind` plus structured metadata for richer animation:
+Copy `.env.example` if you want a local reminder of the optional environment variables. Do not commit real secrets.
 
-- `reasoning.delta`: streamed model text for the Thinking pane.
-- `tool.call` / `tool.output`: inline tool chips in the transcript.
-- `fanout.spawn` / `fanout.task`: Modal/local worker cards that spawn and resolve.
-- `node.add` / `edge.add`: belief graph growth.
-- `node.confidence`: confidence recoloring and self-correction pulses.
-- `counter`: cumulative sources, evidence, leaps, conflicts, and tests.
+```bash
+cp .env.example .env
+```
 
-The cockpit has three zones: Thinking transcript, Belief Graph, and Fan-out/Counters. Live SDK runs use `Runner.run_streamed`; deterministic, scripted, replay, and recovered-timeout paths also emit graph snapshots so the demo remains inspectable when live services are slow.
+Live integration knobs:
 
-## Milestone 34
+- `OPENAI_API_KEY`: required for live OpenAI Agents SDK execution and live web source search.
+- Modal CLI authentication: required only when using `--execution-backend modal`.
+- `RAINDROP_WRITE_KEY`: optional hosted Raindrop writes. Local workshop bundles work without it.
+- `PRAGMATIC_PREWARM_MODAL=1`: optional Modal prewarm on app startup.
 
-Performance work keeps strategy on the OpenAI Agents SDK while reducing demo latency. Live SDK orchestration now defaults to `max_turns=3` and instructs the agent to make one strategy decision before calling the composite `run_deterministic_research_loop_tool`, while the loop still emits graph and counter events for the realtime cockpit. Local fan-out batches run concurrently with ordered results and per-task failure isolation. Modal functions use `min_containers=1` with a `scaledown_window`, and `python -m pragmatic modal-prewarm` can warm both remote jobs before a live run; the Starlette app can also prewarm in the background when `PRAGMATIC_PREWARM_MODAL=1` is set.
+Commands that make live model calls require explicit flags such as `--live`, `--allow-live-sdk`, and, for live web source acquisition, `--source-mode web --allow-live-web-search`.
 
-## Milestone 35
+## Architecture
 
-The realtime cockpit now uses an Obsidian Observatory visual system: dark glass panels, mint-cyan live accents, glowing confidence-colored graph nodes, cinematic worker/counter motion, and a frosted answer drawer. The app keeps the same SSE event wiring and one-viewport layout while making the research run read like a precise mission-control instrument.
+```mermaid
+flowchart LR
+    thesis["User thesis"] --> manager["ResearchManager"]
+    manager --> assumptions["Assumptions and questions"]
+    assumptions --> sources["Prepared or live sources"]
+    sources --> fanout["Local or Modal task fan-out"]
+    fanout --> evidence["Typed evidence"]
+    evidence --> skeptic["Invalid-leap detector"]
+    skeptic --> belief["Belief graph update"]
+    belief --> tests["Decisive tests"]
+    skeptic --> evals["Generated evals"]
+    manager --> traces["Local/Raindrop workshop trace"]
+```
 
-## Milestone 36
+Core modules:
 
-Completed realtime runs now open with a Bottom Line verdict built from the final `ResearchState`: verdict, confidence band, one-sentence takeaway, key reasons, biggest risk, decisive next test, and compact run stats. Deterministic and offline runs always get the template verdict, while live/scripted OpenAI runs may softly polish only the one-liner with a short timeout and safe fallback.
+- `src/pragmatic/research_loop.py`: canonical deterministic research loop.
+- `src/pragmatic/agents.py`: OpenAI Agents SDK facade, scripted orchestration, and guarded live execution.
+- `src/pragmatic/execution.py`: local and Modal-shaped task execution backends.
+- `src/pragmatic/source_search.py`: prepared-source and opt-in live web source acquisition.
+- `src/pragmatic/raindrop_client.py`: local and hosted observability adapters.
+- `src/pragmatic/eval_suite.py`: regression gates for the evidence-boundary behavior.
+- `realtime_app.py`: realtime browser cockpit.
+- `app.py`: older Streamlit app.
 
-## Milestone 37
+## Demo Scenarios
 
-Spider silk now has a prepared offline corpus for recorded demos. The realtime app can auto-route "Spider silk for bullet proof vests" to `data/spider_silk_sources.json`, or select the spider-silk or AI-scientist corpus explicitly, while keeping live web search disabled for prepared runs. The corpus is tuned to show the tensile-toughness proxy boundary, contradictory ballistic/manufacturing limits, a generated eval from the invalid analogy, and an NIJ Level IIIA / V50 decisive test against an aramid control.
+The scenario pack in `src/pragmatic/demo.py` includes:
 
-## Milestone 38
+- `live_full`: live SDK, live web evidence acquisition, Modal execution, and local Workshop observability.
+- `core_loop`: prepared corpus, scripted SDK-style specialist steps, and local execution.
+- `modal_fanout`: remote research fan-out when Modal is configured.
+- `spider_silk_prepared`: offline source pack tuned to show the tensile-toughness proxy boundary.
+- `failure_replay`: replay story where a proxy-evidence failure becomes an eval and changes confidence.
+- `live_guarded`: dry-run-first live SDK readiness path.
 
-The realtime cockpit now pushes SSE events as soon as the producer emits them, requests OpenAI reasoning summaries when the installed Agents SDK supports them, and keeps tool-argument JSON out of the Thinking stream. The Thinking pane now leads with structured thought cards, keeps raw reasoning in a collapsed drawer, and pulses matching belief-graph nodes as cards arrive or are hovered.
+## Evidence Boundaries
 
-## Milestone 39
+Prepared corpora in `data/` are demo and regression fixtures, not proof that the underlying scientific claims are true.
 
-The belief graph now renders as a thesis-centered hierarchy instead of a free-floating mesh. Assumptions sit as radial spokes with confidence-colored sizing and evidence count badges, evidence leaves stay collapsed by default, relation styles encode support/contradiction/proxy boundaries, and node focus opens a compact detail panel while dimming unrelated context.
+Retrieval scores are relevance heuristics only. Evidence strength is decided later by extraction, cross-source checking, invalid-leap detection, verifier tasks, and belief updates, and even those are prototype guardrails rather than a complete scientific review.
+
+The spider-silk prepared demo is intentionally skeptical: it treats tensile toughness as proxy evidence for ballistic vest performance, flags the unsupported application leap, and asks for a standards-relevant NIJ Level IIIA / V50 panel comparison against an aramid control.
+
+The default AI-scientist/materials thesis likewise separates graph retrieval support from the stronger claim that a system accelerates real materials discovery.
+
+## Repository Map
+
+- `data/`: committed prepared source packs.
+- `docs/playground.md`: no-key local walkthrough for first-time visitors.
+- `docs/hackathon_demo_script.md`: recorded-demo run order and fallback artifacts.
+- `eval_baselines/default_v1.json`: committed known-good eval baseline.
+- `tests/`: deterministic unit and integration tests.
+- `.github/workflows/ci.yml`: GitHub Actions test, compile, and eval-baseline check.
+- `artifacts/pragmatic-header-*.png`: public README/demo imagery.
+
+Generated run artifacts are written under ignored local directories such as `.pragmatic/`, `.thesisgraph/`, and `.playwright-mcp/`.
+
+## Public Readiness
+
+This repo is intended to be safe to show publicly as a prototype. Before making a public release, review [docs/publication_checklist.md](docs/publication_checklist.md).
+
+Pragmatic is licensed under the Apache License 2.0. See [LICENSE](LICENSE).

@@ -36,7 +36,7 @@ from pragmatic.ui_flow import (
 
 st.set_page_config(page_title="Pragmatic AI", layout="wide")
 
-DEFAULT_DEMO_SCENARIO_ID = "live_full"
+DEFAULT_DEMO_SCENARIO_ID = "spider_silk_prepared"
 DEFAULT_LIVE_SDK_MODEL = "gpt-5-mini"
 ORCHESTRATION_OPTIONS = ["deterministic", "scripted_sdk", "live_sdk"]
 EXECUTION_OPTIONS = ["local", "modal"]

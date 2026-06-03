@@ -6,6 +6,7 @@ from realtime_app import (
     _append_event,
     _build_bottom_line,
     _new_job,
+    _normalize_config,
 )
 
 
@@ -31,6 +32,19 @@ def test_append_event_preserves_kind_and_caps_events():
     assert events[-1]["kind"] == "node.add"
     assert events[-1]["metadata"]["id"] == f"A{MAX_STORED_EVENTS_PER_JOB + 2}"
     assert events[0]["message"] == "event 3"
+
+
+def test_realtime_defaults_are_offline_playground_safe():
+    config = _normalize_config({})
+
+    assert config["orchestration"] == "scripted_sdk"
+    assert config["execution_backend"] == "local"
+    assert config["source_mode"] == "prepared"
+    assert config["allow_live_web_search"] is False
+    assert config["live_sdk_enabled"] is False
+    assert config["live_dry_run"] is True
+    assert config["require_demo_proof"] is False
+    assert config["timeout_seconds"] == 60
 
 
 def test_build_bottom_line_populates_verdict_and_next_test():

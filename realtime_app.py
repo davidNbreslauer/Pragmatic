@@ -26,6 +26,10 @@ from pragmatic.schemas import LiveRunResult, ResearchState
 
 DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_THESIS = "Spider silk for bullet proof vests"
+DEFAULT_ORCHESTRATION = "scripted_sdk"
+DEFAULT_EXECUTION_BACKEND = "local"
+DEFAULT_SOURCE_MODE = "prepared"
+DEFAULT_OBSERVABILITY_MODE = "local"
 MAX_STORED_EVENTS_PER_JOB = 2000
 RUNS: dict[str, dict[str, Any]] = {}
 RUN_LOCK = threading.Lock()
@@ -476,22 +480,22 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
     elif corpus_choice == "ai_scientist":
         corpus_path = str(AI_SCIENTIST_CORPUS_PATH)
     return {
-        "orchestration": str(raw.get("orchestration") or "live_sdk"),
-        "execution_backend": str(raw.get("execution_backend") or "modal"),
-        "observability_mode": str(raw.get("observability_mode") or "local"),
-        "source_mode": str(raw.get("source_mode") or "web"),
+        "orchestration": str(raw.get("orchestration") or DEFAULT_ORCHESTRATION),
+        "execution_backend": str(raw.get("execution_backend") or DEFAULT_EXECUTION_BACKEND),
+        "observability_mode": str(raw.get("observability_mode") or DEFAULT_OBSERVABILITY_MODE),
+        "source_mode": str(raw.get("source_mode") or DEFAULT_SOURCE_MODE),
         "corpus_choice": corpus_choice,
         "corpus_path": corpus_path,
-        "allow_live_web_search": bool(raw.get("allow_live_web_search", True)),
-        "live_sdk_enabled": bool(raw.get("live_sdk_enabled", True)),
-        "live_dry_run": bool(raw.get("live_dry_run", False)),
-        "require_demo_proof": bool(raw.get("require_demo_proof", True)),
+        "allow_live_web_search": bool(raw.get("allow_live_web_search", False)),
+        "live_sdk_enabled": bool(raw.get("live_sdk_enabled", False)),
+        "live_dry_run": bool(raw.get("live_dry_run", True)),
+        "require_demo_proof": bool(raw.get("require_demo_proof", False)),
         "replay_demo": bool(raw.get("replay_demo", False)),
         "model": str(raw.get("model") or DEFAULT_MODEL),
         "web_search_model": str(raw.get("web_search_model") or DEFAULT_MODEL),
         "max_iterations": int(raw.get("max_iterations") or 1),
         "max_turns": int(raw.get("max_turns") or 3),
-        "timeout_seconds": float(raw.get("timeout_seconds") or 300),
+        "timeout_seconds": float(raw.get("timeout_seconds") or 60),
         "max_web_sources": int(raw.get("max_web_sources") or 8),
     }
 
@@ -1459,21 +1463,21 @@ INDEX_HTML = """<!doctype html>
               <button id="stop" disabled>Stop</button>
               <span class="run-indicator" id="runIndicator"><span class="spinner"></span>Running <span class="run-timer" id="runTimer">0.0s</span></span>
             </div>
-            <span class="badge" id="modeBadge">live_sdk / modal / live web / local Workshop</span>
+            <span class="badge" id="modeBadge">scripted_sdk / local / prepared / local Workshop</span>
           </div>
         </div>
         <details>
           <summary>Run controls</summary>
           <div class="grid">
-            <label>Orchestration<select id="orchestration"><option value="live_sdk">live_sdk</option><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option></select></label>
-            <label>Execution<select id="execution_backend"><option value="modal">modal</option><option value="local">local</option></select></label>
-            <label>Sources<select id="source_mode"><option value="web">live web</option><option value="prepared">prepared</option></select></label>
+            <label>Orchestration<select id="orchestration"><option value="scripted_sdk">scripted_sdk</option><option value="deterministic">deterministic</option><option value="live_sdk">live_sdk</option></select></label>
+            <label>Execution<select id="execution_backend"><option value="local">local</option><option value="modal">modal</option></select></label>
+            <label>Sources<select id="source_mode"><option value="prepared">prepared</option><option value="web">live web</option></select></label>
             <label>Corpus<select id="corpus_choice"><option value="auto">auto</option><option value="spider_silk">Spider silk (prepared)</option><option value="ai_scientist">AI scientist (prepared)</option></select></label>
             <label>Model<input id="model" value="__DEFAULT_MODEL__" /></label>
-            <label>Timeout seconds<input id="timeout_seconds" type="number" value="300" min="5" max="600" /></label>
+            <label>Timeout seconds<input id="timeout_seconds" type="number" value="60" min="5" max="600" /></label>
             <label>Max turns<input id="max_turns" type="number" value="3" min="1" max="20" /></label>
             <label>Max web sources<input id="max_web_sources" type="number" value="8" min="1" max="20" /></label>
-            <label>Full proof<select id="require_demo_proof"><option value="true">required</option><option value="false">not required</option></select></label>
+            <label>Full proof<select id="require_demo_proof"><option value="false">not required</option><option value="true">required</option></select></label>
           </div>
         </details>
       </section>
@@ -2503,14 +2507,17 @@ INDEX_HTML = """<!doctype html>
       runIndicator.classList.add("visible");
       setActivity("Starting Pragmatic run", "Opening the event stream.", true);
       startRunTimer();
+      const orchestration = document.getElementById("orchestration").value;
+      const executionBackend = document.getElementById("execution_backend").value;
+      const sourceMode = document.getElementById("source_mode").value;
       document.getElementById("modeBadge").textContent =
-        `${document.getElementById("orchestration").value} / ${document.getElementById("execution_backend").value} / ${document.getElementById("source_mode").value}`;
+        `${orchestration} / ${executionBackend} / ${sourceMode}`;
       const payload = {
         thesis_text: document.getElementById("question").value,
         config: {
-          orchestration: document.getElementById("orchestration").value,
-          execution_backend: document.getElementById("execution_backend").value,
-          source_mode: document.getElementById("source_mode").value,
+          orchestration: orchestration,
+          execution_backend: executionBackend,
+          source_mode: sourceMode,
           corpus_choice: document.getElementById("corpus_choice").value,
           model: document.getElementById("model").value,
           web_search_model: document.getElementById("model").value,
@@ -2518,9 +2525,9 @@ INDEX_HTML = """<!doctype html>
           max_turns: Number(document.getElementById("max_turns").value),
           max_web_sources: Number(document.getElementById("max_web_sources").value),
           require_demo_proof: document.getElementById("require_demo_proof").value === "true",
-          live_sdk_enabled: true,
-          live_dry_run: false,
-          allow_live_web_search: document.getElementById("source_mode").value === "web",
+          live_sdk_enabled: orchestration === "live_sdk",
+          live_dry_run: orchestration !== "live_sdk",
+          allow_live_web_search: sourceMode === "web",
           observability_mode: "local"
         }
       };

@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "pragmatic"
 version = "0.1.0"
 description = "Autoresearch state machine for evidence-backed thesis evaluation."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
     "modal>=1.4,<2",
     "openai>=2,<3",
@@ -20,6 +22,10 @@ dependencies = [
 
 [project.scripts]
 pragmatic = "pragmatic.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/davidNbreslauer/Pragmatic"
+Repository = "https://github.com/davidNbreslauer/Pragmatic"
 
 [project.optional-dependencies]
 dev = [

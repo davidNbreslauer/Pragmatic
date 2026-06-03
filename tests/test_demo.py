@@ -8,7 +8,9 @@ def test_demo_scenarios_cover_core_modal_replay_and_live():
     scenarios = demo_scenarios()
     scenario_ids = {scenario.id for scenario in scenarios}
 
+    assert scenarios[0].id == "spider_silk_prepared"
     assert {
+        "spider_silk_prepared",
         "live_full",
         "core_loop",
         "modal_fanout",
@@ -46,7 +48,7 @@ def test_cli_demo_scenarios_and_smoke(tmp_path, capsys):
 
     assert exit_code == 0
     payload = json.loads(scenarios_path.read_text(encoding="utf-8"))
-    assert payload[0]["id"] == "live_full"
+    assert payload[0]["id"] == "spider_silk_prepared"
 
     exit_code = main(["demo-smoke", "--output-dir", str(tmp_path / "smoke"), "--fail-on-fail"])
     captured = capsys.readouterr()

@@ -24,9 +24,10 @@ from pragmatic import (
     run_integration_doctor,
     save_eval_snapshot,
 )
+from pragmatic.corpus import packaged_corpus_supports_thesis
 from pragmatic.live_harness import load_latest_live_run
 from pragmatic.persistence import compare_runs, list_runs, load_run, save_run
-from pragmatic.replay import BENCHMARK_SOURCE_IDS, run_replay_demo
+from pragmatic.replay import run_replay_demo
 from pragmatic.schemas import ReplayResult, RunComparison
 from pragmatic.ui_flow import (
     build_orchestration_flow_snapshot,
@@ -196,6 +197,13 @@ def main() -> None:
     if load_latest_live_clicked:
         if not _load_latest_live_run_into_session():
             st.warning("No live run artifact with a ResearchState was found.")
+
+    if run_clicked and source_mode == "prepared" and not packaged_corpus_supports_thesis(thesis_text):
+        st.error(
+            "The packaged no-key prepared corpus is the spider-silk demo corpus. "
+            "For arbitrary topics, switch Evidence search to live web and enable live web search."
+        )
+        run_clicked = False
 
     if run_clicked:
         with st.status(_run_status_label(orchestration, source_mode, execution_backend), expanded=True) as run_status:
@@ -976,7 +984,7 @@ def render_replay(replay: ReplayResult) -> None:
     )
 
     st.dataframe(
-        _benchmark_replay_rows(replay),
+        _replay_evidence_rows(replay),
         width="stretch",
         hide_index=True,
     )
@@ -1414,27 +1422,25 @@ def _assumption_by_id(state: ResearchState, assumption_id: str):
     raise ValueError(f"Assumption not found: {assumption_id}")
 
 
-def _benchmark_replay_rows(replay: ReplayResult) -> list[dict[str, str | float]]:
-    first_items = {
-        item.source_id: item
-        for item in replay.first_pass.evidence_items
-        if item.source_id in BENCHMARK_SOURCE_IDS
-    }
-    replay_items = {
-        item.source_id: item
-        for item in replay.replay_pass.evidence_items
-        if item.source_id in BENCHMARK_SOURCE_IDS
-    }
-
+def _replay_evidence_rows(replay: ReplayResult) -> list[dict[str, str | float]]:
+    first_items = {item.id: item for item in replay.first_pass.evidence_items}
+    replay_items = {item.id: item for item in replay.replay_pass.evidence_items}
     rows: list[dict[str, str | float]] = []
-    for source_id in sorted(BENCHMARK_SOURCE_IDS):
-        first_item = first_items.get(source_id)
-        replay_item = replay_items.get(source_id)
+    for item_id in sorted(first_items):
+        first_item = first_items.get(item_id)
+        replay_item = replay_items.get(item_id)
         if first_item is None or replay_item is None:
+            continue
+        if (
+            first_item.evidence_type == replay_item.evidence_type
+            and first_item.confidence == replay_item.confidence
+            and first_item.limitation == replay_item.limitation
+        ):
             continue
         rows.append(
             {
-                "Source": source_id,
+                "Evidence": item_id,
+                "Source": replay_item.source_id,
                 "First-pass type": first_item.evidence_type,
                 "Replay type": replay_item.evidence_type,
                 "First-pass confidence": first_item.confidence,
@@ -1442,7 +1448,7 @@ def _benchmark_replay_rows(replay: ReplayResult) -> list[dict[str, str | float]]
                 "Replay limitation": replay_item.limitation,
             }
         )
-    return rows
+    return rows[:12]
 
 
 def _run_label(run) -> str:

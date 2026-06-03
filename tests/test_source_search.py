@@ -11,6 +11,7 @@ from pragmatic.source_search import build_web_corpus
 
 
 SPIDER_THESIS = "Can spider silk make a bullet proof vest?"
+ARBITRARY_THESIS = "Room-temperature superconductors are ready for commercial grid storage"
 
 
 def test_generic_decomposition_tracks_arbitrary_thesis():
@@ -74,34 +75,34 @@ def test_research_loop_can_use_mock_live_web_corpus(monkeypatch):
     mock_sources = [
         Source(
             id="web_001",
-            title="Spider silk mechanical properties review",
+            title="High-temperature superconductivity review",
             source_type="review",
-            url="https://example.org/spider-silk-review",
+            url="https://example.org/superconductivity-review",
             published_year=2024,
-            tags=["spider-silk", "mechanical-properties", "review"],
-            evidence_scope="Material-property evidence, not a finished vest test.",
+            tags=["superconductivity", "review", "materials"],
+            evidence_scope="Material-property evidence, not a grid-storage deployment test.",
             text=(
-                "Spider silk has high toughness and tensile strength, but translating fiber "
-                "properties into ballistic armor is difficult and application-level vest tests are limited."
+                "High-temperature superconductors can carry current without resistance under "
+                "specific conditions, but room-temperature ambient-pressure operation remains unproven."
             ),
         ),
         Source(
             id="web_002",
-            title="NIJ ballistic armor performance criteria",
-            source_type="standard",
-            url="https://nij.ojp.gov/example-standard",
+            title="Grid energy storage technology review",
+            source_type="government",
+            url="https://example.gov/grid-storage-review",
             published_year=2023,
-            tags=["ballistic", "armor", "standard"],
-            evidence_scope="Defines application-level ballistic armor success criteria.",
+            tags=["grid", "storage", "deployment"],
+            evidence_scope="Describes grid-storage deployment requirements.",
             text=(
-                "Ballistic-resistant body armor is evaluated against projectile threats, "
-                "penetration, and backface deformation under controlled test conditions."
+                "Grid storage systems must meet reliability, cost, safety, and integration "
+                "requirements before commercial deployment."
             ),
         ),
     ]
 
     def fake_build_web_corpus(thesis_text, questions, **kwargs):
-        assert thesis_text == SPIDER_THESIS
+        assert thesis_text == ARBITRARY_THESIS
         assert questions
         assert kwargs["max_sources"] == 4
         return mock_sources
@@ -109,7 +110,7 @@ def test_research_loop_can_use_mock_live_web_corpus(monkeypatch):
     monkeypatch.setattr("pragmatic.research_loop.build_web_corpus", fake_build_web_corpus)
 
     state = run_research_loop(
-        SPIDER_THESIS,
+        ARBITRARY_THESIS,
         source_mode="web",
         allow_live_web_search=True,
         max_web_sources=4,

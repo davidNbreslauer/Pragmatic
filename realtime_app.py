@@ -18,7 +18,7 @@ from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from pragmatic import ResearchManager
-from pragmatic.corpus import SPIDER_SILK_CORPUS_PATH
+from pragmatic.corpus import SPIDER_SILK_CORPUS_PATH, packaged_corpus_supports_thesis
 from pragmatic.live_harness import run_live_harness_sync
 from pragmatic.replay import run_replay_demo
 from pragmatic.schemas import LiveRunResult, ResearchState
@@ -128,6 +128,21 @@ async def start_run(request: Request) -> JSONResponse:
     payload = await request.json()
     thesis_text = str(payload.get("thesis_text") or DEFAULT_THESIS).strip() or DEFAULT_THESIS
     config = _normalize_config(payload.get("config") or {})
+    if (
+        config["source_mode"] == "prepared"
+        and config["corpus_choice"] == "auto"
+        and not packaged_corpus_supports_thesis(thesis_text)
+    ):
+        return JSONResponse(
+            {
+                "error": (
+                    "The packaged no-key prepared corpus is the spider-silk demo corpus. "
+                    "For arbitrary topics, switch Sources to live web and use OPENAI_API_KEY, "
+                    "or explicitly choose a custom/prepared corpus."
+                )
+            },
+            status_code=400,
+        )
     job_id = _new_job(
         thesis_text,
         config,
@@ -1822,6 +1837,7 @@ INDEX_HTML = """<!doctype html>
       if (kind === "counter") return {title: "Updating research counters", detail: counterSummary(meta)};
       if (meta.tool_name) return {title: toolLabel(meta.tool_name, event.status === "succeeded" ? "done" : "call"), detail: summarizeToolProgress(meta.tool_name, meta, event)};
       if (event.stage === "answer") return {title: "Answer ready", detail: event.message || "", running: false};
+      if (event.status === "blocked") return {title: "Run blocked", detail: event.message || event.stage || "", running: false};
       if (event.stage === "error" || event.status === "failed") return {title: "Run failed", detail: event.message || event.stage || "", running: false};
       if (event.status === "stopped") return {title: "Stopped", detail: event.message || "", running: false};
       return {title: event.message || phaseLabel(event.stage) || "Working", detail: event.status || ""};
@@ -1974,6 +1990,9 @@ INDEX_HTML = """<!doctype html>
       if (event.stage === "input") return {icon: "?", label: "Question received", sub: event.metadata?.thesis_text || ""};
       if (event.stage === "answer") return {icon: "✓", label: "Answer ready", sub: event.message || ""};
       if (event.stage === "fallback") return {icon: "↳", label: "Recovered inspectable graph", sub: event.message || ""};
+      if (event.status === "blocked") {
+        return {icon: "!", label: "Run blocked", sub: event.message || event.stage || "", statusClass: "failed"};
+      }
       if (event.stage === "error" || event.status === "failed") {
         return {icon: "!", label: event.message || "Run failed", sub: event.stage || "", statusClass: "failed"};
       }
@@ -2598,6 +2617,16 @@ INDEX_HTML = """<!doctype html>
       };
       const response = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
       const data = await response.json();
+      if (!response.ok) {
+        ask.disabled = false;
+        stop.disabled = true;
+        runIndicator.classList.remove("visible");
+        stopRunTimer();
+        const errorMessage = data.error || "Run could not be started.";
+        setActivity("Run blocked", errorMessage, false);
+        onProgress({stage: "guardrail", status: "blocked", message: errorMessage, metadata: {}});
+        return;
+      }
       source = new EventSource(`/api/runs/${data.job_id}/events`);
       source.addEventListener("progress", message => onProgress(JSON.parse(message.data)));
       source.addEventListener("done", message => {

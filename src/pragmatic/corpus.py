@@ -10,6 +10,7 @@ from pragmatic.schemas import ResearchQuestion, RetrievalScore, Source
 DATA_DIR = Path(__file__).resolve().parent / "data"
 SPIDER_SILK_CORPUS_PATH = DATA_DIR / "spider_silk_sources.json"
 DEFAULT_CORPUS_PATH = SPIDER_SILK_CORPUS_PATH
+SPIDER_SILK_TERMS = ("spider", "silk", "bullet", "vest", "ballistic", "armor")
 STOPWORDS = {
     "a",
     "against",
@@ -37,6 +38,10 @@ STOPWORDS = {
 }
 
 
+class PreparedCorpusMismatchError(ValueError):
+    """Raised when the packaged demo corpus does not match the requested thesis."""
+
+
 def load_corpus(path: str | Path | None = None) -> list[Source]:
     corpus_path = Path(path) if path is not None else DEFAULT_CORPUS_PATH
     with corpus_path.open("r", encoding="utf-8") as handle:
@@ -44,14 +49,22 @@ def load_corpus(path: str | Path | None = None) -> list[Source]:
     return [Source.model_validate(source) for source in raw_sources]
 
 
+def packaged_corpus_supports_thesis(thesis_text: str) -> bool:
+    thesis = thesis_text.lower()
+    return any(term in thesis for term in SPIDER_SILK_TERMS)
+
+
 def resolve_corpus_path(thesis_text: str, corpus_path: str | Path | None = None) -> Path:
     if corpus_path is not None:
         return Path(corpus_path)
 
-    thesis = thesis_text.lower()
-    if any(term in thesis for term in ["spider", "silk", "bullet", "vest"]):
+    if packaged_corpus_supports_thesis(thesis_text):
         return SPIDER_SILK_CORPUS_PATH
-    return DEFAULT_CORPUS_PATH
+    raise PreparedCorpusMismatchError(
+        "The packaged prepared corpus is the spider-silk demo corpus. "
+        "For arbitrary topics, use live web search with OPENAI_API_KEY, "
+        "--source-mode web, and --allow-live-web-search, or pass an explicit corpus path."
+    )
 
 
 def score_corpus_for_questions(

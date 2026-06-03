@@ -11,6 +11,7 @@ from pragmatic.agents import (
     LiveAgentsSDKNotEnabled,
     ResearchManager,
 )
+from pragmatic.corpus import PreparedCorpusMismatchError
 from pragmatic.doctor import run_integration_doctor
 from pragmatic.demo import demo_scenarios, run_demo_smoke
 from pragmatic.eval_corpus import (
@@ -23,11 +24,43 @@ from pragmatic.eval_corpus import (
 from pragmatic.eval_suite import export_generated_eval_cases, run_eval_suite
 from pragmatic.live_harness import run_live_harness_sync
 from pragmatic.research_loop import DEFAULT_THESIS, run_research_loop
+from pragmatic.source_search import WebSearchUnavailable
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="pragmatic")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run the research loop and print a ResearchState JSON artifact.",
+    )
+    run_parser.add_argument("--thesis", default=DEFAULT_THESIS)
+    run_parser.add_argument("--max-iterations", type=int, default=1)
+    run_parser.add_argument("--output")
+    run_parser.add_argument("--corpus-path")
+    run_parser.add_argument(
+        "--source-mode",
+        choices=["prepared", "web"],
+        default="prepared",
+    )
+    run_parser.add_argument(
+        "--allow-live-web-search",
+        action="store_true",
+        help="Allow OpenAI Responses API web search when --source-mode web is selected.",
+    )
+    run_parser.add_argument("--web-search-model")
+    run_parser.add_argument("--max-web-sources", type=int, default=8)
+    run_parser.add_argument(
+        "--execution-backend",
+        choices=["local", "modal"],
+        default="local",
+    )
+    run_parser.add_argument(
+        "--observability",
+        choices=["local", "raindrop", "off"],
+        default="local",
+    )
 
     eval_parser = subparsers.add_parser(
         "eval-suite",
@@ -256,11 +289,40 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.command == "run":
+        try:
+            state = run_research_loop(
+                args.thesis,
+                max_iterations=args.max_iterations,
+                corpus_path=args.corpus_path,
+                execution_backend=args.execution_backend,
+                source_mode=args.source_mode,
+                allow_live_web_search=args.allow_live_web_search,
+                web_search_model=args.web_search_model,
+                max_web_sources=args.max_web_sources,
+                observability_mode=args.observability,
+            )
+        except (PreparedCorpusMismatchError, WebSearchUnavailable, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        payload = state.model_dump_json(indent=2)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            print(payload)
+        return 0
+
     if args.command == "eval-suite":
-        result = run_eval_suite(
-            args.thesis,
-            max_iterations=args.max_iterations,
-        )
+        try:
+            result = run_eval_suite(
+                args.thesis,
+                max_iterations=args.max_iterations,
+            )
+        except PreparedCorpusMismatchError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         payload = json.dumps(result.model_dump(), indent=2)
         if args.output:
             output_path = Path(args.output)

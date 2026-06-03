@@ -1,6 +1,14 @@
 from pathlib import Path
 
-from pragmatic.corpus import SPIDER_SILK_CORPUS_PATH, load_corpus, resolve_corpus_path
+import pytest
+
+from pragmatic.corpus import (
+    SPIDER_SILK_CORPUS_PATH,
+    PreparedCorpusMismatchError,
+    load_corpus,
+    packaged_corpus_supports_thesis,
+    resolve_corpus_path,
+)
 from pragmatic.replay import run_replay_demo
 from pragmatic.research_loop import run_research_loop
 from pragmatic.schemas import Source
@@ -22,6 +30,17 @@ def test_spider_silk_corpus_loads_and_validates_sources():
 def test_spider_silk_thesis_auto_routes_to_prepared_corpus():
     assert resolve_corpus_path(THESIS) == SPIDER_SILK_CORPUS_PATH
     assert resolve_corpus_path(THESIS, Path("custom.json")) == Path("custom.json")
+    assert packaged_corpus_supports_thesis(THESIS) is True
+
+
+def test_arbitrary_thesis_does_not_silently_use_spider_corpus():
+    thesis = "Room-temperature superconductors are ready for commercial grid storage"
+
+    assert packaged_corpus_supports_thesis(thesis) is False
+    with pytest.raises(PreparedCorpusMismatchError, match="live web search"):
+        resolve_corpus_path(thesis)
+    with pytest.raises(PreparedCorpusMismatchError, match="OPENAI_API_KEY"):
+        run_research_loop(thesis, source_mode="prepared", observability_mode="off")
 
 
 def test_spider_silk_loop_produces_offline_demo_artifacts():

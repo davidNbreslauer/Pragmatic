@@ -41,6 +41,8 @@ The default run is:
 
 That means the first click should not make OpenAI API calls, run Modal, or perform live web search.
 
+The offline prepared corpus is the spider-silk demo corpus. If you type an unrelated topic while `Sources` is still `prepared` and `Corpus` is still `auto`, Pragmatic will block the run instead of silently reusing spider-silk evidence.
+
 ## 4. What To Look For
 
 In the spider-silk prepared run, Pragmatic should:
@@ -53,7 +55,23 @@ In the spider-silk prepared run, Pragmatic should:
 
 The point is not that the answer is final. The point is that the uncertainty is inspectable.
 
-## 5. Try Live Paths Later
+## 5. Try Arbitrary Topics With Live Web Search
+
+Meaningful arbitrary-topic runs need live source acquisition:
+
+```bash
+export OPENAI_API_KEY="..."
+python -m pragmatic run \
+  --thesis "Room-temperature superconductors are ready for commercial grid storage" \
+  --source-mode web \
+  --allow-live-web-search \
+  --max-web-sources 5 \
+  --output .pragmatic/live_web_state.json
+```
+
+In the realtime cockpit, switch `Sources` to `live web` before asking an unrelated question.
+
+## 6. Try Heavier Live Paths Later
 
 Live OpenAI API and Modal paths are available after the offline run is working.
 

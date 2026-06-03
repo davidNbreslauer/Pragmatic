@@ -13,6 +13,8 @@ Use this before switching the repository from private to public or announcing it
 - Live model paths use public OpenAI API credentials through `OPENAI_API_KEY`; the repo does not depend on the Codex CLI or a Codex benchmark harness.
 - Search ranking is documented as lightweight deterministic term-overlap scoring, not a deep-research or authoritative evidence-ranking system.
 - The realtime cockpit defaults to offline prepared-source/local execution so first-time visitors can play without API keys or Modal.
+- Arbitrary prepared-mode prompts are blocked unless the caller supplies or selects a corpus, so the spider-silk demo corpus is not silently reused for unrelated topics.
+- Meaningful arbitrary-topic runs are documented through OpenAI web search with `OPENAI_API_KEY`, `--source-mode web`, and `--allow-live-web-search`.
 - Modal and hosted Raindrop are explicit UI switches and default to off.
 
 ## Check Before Publishing
@@ -38,7 +40,7 @@ python -m pragmatic doctor
 - Confirm a live API-backed run only after setting `OPENAI_API_KEY`:
 
 ```bash
-python -m pragmatic live-run-harness --live --allow-live-sdk --source-mode prepared --observability local
+python -m pragmatic run --thesis "Room-temperature superconductors are ready for commercial grid storage" --source-mode web --allow-live-web-search --max-web-sources 5 --output .pragmatic/live_web_state.json
 ```
 
 ## Claim Boundaries To Preserve

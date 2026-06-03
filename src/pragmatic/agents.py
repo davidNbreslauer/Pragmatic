@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from pragmatic.belief_update import apply_belief_updates, update_beliefs
-from pragmatic.corpus import load_corpus, score_corpus_for_questions
+from pragmatic.corpus import load_corpus, resolve_corpus_path, score_corpus_for_questions
 from pragmatic.decisive_tests import propose_decisive_tests
 from pragmatic.eval_writer import generate_evals_from_failures
 from pragmatic.eval_workshop import build_eval_workshop
@@ -1044,8 +1044,6 @@ if function_tool is not None:
                 max_sources=max_web_sources,
             )
         else:
-            from pragmatic.corpus import resolve_corpus_path
-
             corpus = load_corpus(resolve_corpus_path(thesis_text, corpus_path or None))
         sources = retrieve_sources(questions, corpus)
         _record_partial_list("sources", sources)
@@ -1877,7 +1875,8 @@ def _finalize_live_research_state(
                 max_sources=max_web_sources,
             )
         else:
-            sources = retrieve_sources(state.research_questions, load_corpus(None))
+            corpus = load_corpus(resolve_corpus_path(state.thesis.text))
+            sources = retrieve_sources(state.research_questions, corpus)
         _append_unique(state.sources, sources)
         _append_agent_trace(
             state,

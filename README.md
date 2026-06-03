@@ -51,7 +51,7 @@ python -m uvicorn realtime_app:app --host 127.0.0.1 --port 8501
 
 Open [http://127.0.0.1:8501](http://127.0.0.1:8501).
 
-The realtime app opens on an offline prepared-source run by default. Live SDK, live web search, Modal, and hosted Raindrop paths are opt-in.
+The realtime app opens on the offline spider-silk prepared-source demo by default. Live SDK, live web search, Modal, and hosted Raindrop paths are opt-in. The packaged prepared corpus is intentionally demo-scoped; arbitrary topics need live web search or an explicit custom corpus.
 
 In the realtime and Streamlit UIs, `Use Modal` and `Use Raindrop` are explicit switches and both default to off. With `Use Raindrop` off, Pragmatic still writes local Workshop-compatible artifacts; it just does not attempt hosted Raindrop SDK writes.
 
@@ -64,6 +64,8 @@ Pragmatic does not depend on the Codex CLI or a Codex benchmark harness. The liv
 - `OPENAI_API_KEY` for authentication.
 
 The command named `live-run-harness` is Pragmatic's own guardrailed API harness. In dry-run mode it validates settings without making an API call. In live mode it requires `--live --allow-live-sdk` and `OPENAI_API_KEY`.
+
+For arbitrary-topic source acquisition without the heavier live Agents SDK orchestration, use `pragmatic run --source-mode web --allow-live-web-search` with `OPENAI_API_KEY`.
 
 ## Search And Ranking Limits
 
@@ -101,7 +103,19 @@ Run the guarded live-path harness in dry-run mode:
 python -m pragmatic live-run-harness
 ```
 
-Run a live OpenAI API-backed path with prepared sources:
+Run an arbitrary-topic research loop with live OpenAI web search:
+
+```bash
+export OPENAI_API_KEY="..."
+python -m pragmatic run \
+  --thesis "Room-temperature superconductors are ready for commercial grid storage" \
+  --source-mode web \
+  --allow-live-web-search \
+  --max-web-sources 5 \
+  --output .pragmatic/live_web_state.json
+```
+
+Run the heavier live OpenAI Agents SDK harness:
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -112,7 +126,7 @@ python -m pragmatic live-run-harness \
   --observability local
 ```
 
-Run live OpenAI API-backed source acquisition with web search:
+Run the live OpenAI Agents SDK harness with web source acquisition:
 
 ```bash
 export OPENAI_API_KEY="..."
